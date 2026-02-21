@@ -1,4 +1,5 @@
 import { auth } from "@/auth"
+import { redirect } from "next/navigation"
 import { Octokit } from "@octokit/rest"
 import { PRCard, PRCardData } from "@/components/pr-card"
 
@@ -60,6 +61,7 @@ async function fetchUserPRs(accessToken: string): Promise<PRCardData[]> {
 
 export default async function DashboardPage() {
   const session = await auth()
+  if (!session?.user) redirect("/login")
   const prs = session?.accessToken ? await fetchUserPRs(session.accessToken as string) : []
 
   return (
