@@ -46,3 +46,17 @@ export interface RetrievalResult {
   importance: number;
   hunk_preview: string;
 }
+
+export interface LineComment {
+  id: string
+  pr_id: string
+  filename: string
+  line_number: number
+  side: 'left' | 'right'
+  author: string
+  author_avatar: string
+  body: string
+  created_at: string
+  updated_at: string
+  resolved: boolean
+}
