@@ -12,15 +12,18 @@
   "dependencies": {
     "@auth/core": "^0.41.0",
     "@octokit/rest": "^22.0.1",
+    "@tanstack/react-virtual": "^3.13.18",
     "axios": "^1.13.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "diff2html": "^3.4.56",
     "lucide-react": "^0.575.0",
     "next": "16.1.6",
     "next-auth": "^5.0.0-beta.30",
     "radix-ui": "^1.4.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "shiki": "^3.22.0",
     "swr": "^2.4.0",
     "tailwind-merge": "^3.5.0"
   },
