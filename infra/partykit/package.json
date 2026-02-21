@@ -1,0 +1,16 @@
+{
+  "name": "@assert-review/partykit",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/server.ts",
+  "scripts": {
+    "dev": "partykit dev",
+    "deploy": "partykit deploy",
+    "build": "echo 'PartyKit does not need a separate build step' && exit 0",
+    "test": "echo 'PartyKit tests will be added in Phase 11' && exit 0",
+    "lint": "echo 'No lint configured for partykit' && exit 0"
+  },
+  "dependencies": {
+    "partykit": "^0.0.107"
+  }
+}

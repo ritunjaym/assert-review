@@ -1,0 +1,4 @@
+{
+  "name": "assert-review",
+  "main": "src/server.ts"
+}
