@@ -1,0 +1,456 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Assert Review ML API",
+    "description": "AI-powered code review backend \u2014 embeddings, reranking, clustering",
+    "version": "0.7.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Check",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rank": {
+      "post": {
+        "tags": [
+          "ranking"
+        ],
+        "summary": "Rank Pr",
+        "description": "Rank PR files by ML-estimated importance.",
+        "operationId": "rank_pr_rank_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RankRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RankResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cluster": {
+      "post": {
+        "tags": [
+          "clustering"
+        ],
+        "summary": "Cluster Pr",
+        "description": "Cluster PR files into semantic groups.",
+        "operationId": "cluster_pr_cluster_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClusterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClusterResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/retrieve": {
+      "post": {
+        "tags": [
+          "retrieval"
+        ],
+        "summary": "Retrieve Similar",
+        "description": "Retrieve similar historical code hunks.",
+        "operationId": "retrieve_similar_retrieve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetrieveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetrieveResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webhooks/github": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Github Webhook",
+        "description": "Receive GitHub webhook events.",
+        "operationId": "github_webhook_webhooks_github_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ClusterOutput": {
+        "properties": {
+          "cluster_id": {
+            "type": "integer",
+            "title": "Cluster Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "coherence": {
+            "type": "number",
+            "title": "Coherence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cluster_id",
+          "label",
+          "files",
+          "coherence"
+        ],
+        "title": "ClusterOutput"
+      },
+      "ClusterRequest": {
+        "properties": {
+          "pr_id": {
+            "type": "string",
+            "title": "Pr Id"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileInput"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pr_id",
+          "files"
+        ],
+        "title": "ClusterRequest"
+      },
+      "ClusterResponse": {
+        "properties": {
+          "pr_id": {
+            "type": "string",
+            "title": "Pr Id"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ClusterOutput"
+            },
+            "type": "array",
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pr_id",
+          "groups"
+        ],
+        "title": "ClusterResponse"
+      },
+      "FileInput": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "patch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patch"
+          },
+          "additions": {
+            "type": "integer",
+            "title": "Additions",
+            "default": 0
+          },
+          "deletions": {
+            "type": "integer",
+            "title": "Deletions",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename"
+        ],
+        "title": "FileInput"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "RankRequest": {
+        "properties": {
+          "pr_id": {
+            "type": "string",
+            "title": "Pr Id"
+          },
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileInput"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pr_id",
+          "repo",
+          "files"
+        ],
+        "title": "RankRequest"
+      },
+      "RankResponse": {
+        "properties": {
+          "pr_id": {
+            "type": "string",
+            "title": "Pr Id"
+          },
+          "ranked_files": {
+            "items": {
+              "$ref": "#/components/schemas/RankedFile"
+            },
+            "type": "array",
+            "title": "Ranked Files"
+          },
+          "processing_ms": {
+            "type": "integer",
+            "title": "Processing Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pr_id",
+          "ranked_files",
+          "processing_ms"
+        ],
+        "title": "RankResponse"
+      },
+      "RankedFile": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "rank": {
+            "type": "integer",
+            "title": "Rank"
+          },
+          "reranker_score": {
+            "type": "number",
+            "title": "Reranker Score"
+          },
+          "retrieval_score": {
+            "type": "number",
+            "title": "Retrieval Score"
+          },
+          "final_score": {
+            "type": "number",
+            "title": "Final Score"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename",
+          "rank",
+          "reranker_score",
+          "retrieval_score",
+          "final_score",
+          "explanation"
+        ],
+        "title": "RankedFile"
+      },
+      "RetrieveRequest": {
+        "properties": {
+          "query_diff": {
+            "type": "string",
+            "title": "Query Diff"
+          },
+          "k": {
+            "type": "integer",
+            "title": "K",
+            "default": 10
+          }
+        },
+        "type": "object",
+        "required": [
+          "query_diff"
+        ],
+        "title": "RetrieveRequest"
+      },
+      "RetrieveResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "title": "RetrieveResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
