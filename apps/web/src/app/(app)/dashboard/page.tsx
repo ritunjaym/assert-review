@@ -37,9 +37,10 @@ async function fetchUserPRs(accessToken: string): Promise<PRCardData[]> {
               author: pr.user?.login ?? "unknown",
               authorAvatar: pr.user?.avatar_url ?? "",
               createdAt: pr.created_at,
-              fileCount: pr.changed_files ?? 0,
-              additions: pr.additions ?? 0,
-              deletions: pr.deletions ?? 0,
+              // changed_files/additions/deletions are not in list endpoint; default to 0
+              fileCount: 0,
+              additions: 0,
+              deletions: 0,
               isDraft: pr.draft ?? false,
             })
           }
@@ -59,7 +60,7 @@ async function fetchUserPRs(accessToken: string): Promise<PRCardData[]> {
 
 export default async function DashboardPage() {
   const session = await auth()
-  const prs = session?.accessToken ? await fetchUserPRs(session.accessToken) : []
+  const prs = session?.accessToken ? await fetchUserPRs(session.accessToken as string) : []
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">

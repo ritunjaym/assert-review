@@ -11,6 +11,9 @@ export interface FileListItem {
   patch?: string
   rank?: number
   finalScore?: number
+  rerankerScore?: number
+  retrievalScore?: number
+  explanation?: string
   clusterId?: number
   clusterLabel?: string
 }
