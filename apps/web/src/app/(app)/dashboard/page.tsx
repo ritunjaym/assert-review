@@ -61,8 +61,9 @@ async function fetchUserPRs(accessToken: string): Promise<PRCardData[]> {
 
 export default async function DashboardPage() {
   const session = await auth()
-  if (!session?.user) redirect("/login")
-  const prs = session?.accessToken ? await fetchUserPRs(session.accessToken as string) : []
+  if (!session) redirect("/login")
+  const accessToken = session.accessToken as string
+  const prs = accessToken ? await fetchUserPRs(accessToken) : []
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">

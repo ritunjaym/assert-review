@@ -1,10 +1,9 @@
 import NextAuth from "next-auth"
-import { authConfig } from "./auth.config"
+import GitHub from "next-auth/providers/github"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  ...authConfig,
+  providers: [GitHub],
   callbacks: {
-    ...authConfig.callbacks,
     async jwt({ token, account }) {
       if (account) token.accessToken = account.access_token
       return token
@@ -15,9 +14,3 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
 })
-
-declare module "next-auth" {
-  interface Session {
-    accessToken?: string
-  }
-}
