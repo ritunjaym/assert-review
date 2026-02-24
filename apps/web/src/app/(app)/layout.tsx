@@ -1,9 +1,9 @@
-import { auth, signOut } from "@/auth"
 import { redirect } from "next/navigation"
+import { getSession } from "@/lib/session"
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth()
-  
+  const session = await getSession()
+
   if (!session) {
     redirect("/login")
   }
@@ -13,17 +13,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <header className="border-b border-border px-6 py-3 flex items-center justify-between">
         <a href="/dashboard" className="font-semibold text-lg">Assert Review</a>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-muted-foreground">{session.user?.name}</span>
-          <form
-            action={async () => {
-              "use server"
-              await signOut({ redirectTo: "/login" })
-            }}
+          <span className="text-sm text-muted-foreground">{session.user.name}</span>
+          <a
+            href="/api/auth/logout"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <button type="submit" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Sign out
-            </button>
-          </form>
+            Sign out
+          </a>
         </div>
       </header>
       <main id="main-content">{children}</main>
