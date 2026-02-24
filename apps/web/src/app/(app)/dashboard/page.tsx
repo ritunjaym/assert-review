@@ -1,22 +1,21 @@
-import { auth } from "@/auth"
 import { redirect } from "next/navigation"
+import { getSession } from "@/lib/session"
 import { Octokit } from "@octokit/rest"
 import { PRCard, PRCardData } from "@/components/pr-card"
 
 async function fetchUserPRs(accessToken: string): Promise<PRCardData[]> {
   try {
     const octokit = new Octokit({ auth: accessToken })
-    
-    // Get user's repos with push access (max 10)
+
     const { data: repos } = await octokit.repos.listForAuthenticatedUser({
       sort: "pushed",
       direction: "desc",
       per_page: 10,
       type: "owner",
     })
-    
+
     const allPRs: PRCardData[] = []
-    
+
     await Promise.all(
       repos.slice(0, 5).map(async (repo) => {
         try {
@@ -28,7 +27,7 @@ async function fetchUserPRs(accessToken: string): Promise<PRCardData[]> {
             sort: "updated",
             direction: "desc",
           })
-          
+
           for (const pr of prs) {
             allPRs.push({
               number: pr.number,
@@ -38,7 +37,6 @@ async function fetchUserPRs(accessToken: string): Promise<PRCardData[]> {
               author: pr.user?.login ?? "unknown",
               authorAvatar: pr.user?.avatar_url ?? "",
               createdAt: pr.created_at,
-              // changed_files/additions/deletions are not in list endpoint; default to 0
               fileCount: 0,
               additions: 0,
               deletions: 0,
@@ -50,7 +48,7 @@ async function fetchUserPRs(accessToken: string): Promise<PRCardData[]> {
         }
       })
     )
-    
+
     return allPRs.sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     )
@@ -60,9 +58,9 @@ async function fetchUserPRs(accessToken: string): Promise<PRCardData[]> {
 }
 
 export default async function DashboardPage() {
-  const session = await auth()
+  const session = await getSession()
   if (!session) redirect("/login")
-  const accessToken = session.accessToken as string
+  const { accessToken } = session
   const prs = accessToken ? await fetchUserPRs(accessToken) : []
 
   return (
@@ -73,7 +71,7 @@ export default async function DashboardPage() {
           {prs.length} open PRs across your repositories
         </p>
       </div>
-      
+
       {prs.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
           <p className="text-lg font-medium">No open pull requests</p>

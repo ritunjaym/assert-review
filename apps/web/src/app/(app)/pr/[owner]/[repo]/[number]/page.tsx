@@ -1,4 +1,5 @@
-import { auth } from "@/auth"
+import { redirect } from "next/navigation"
+import { getSession } from "@/lib/session"
 import { Octokit } from "@octokit/rest"
 import { PRReviewView } from "@/components/pr-review/pr-review-view"
 
@@ -8,7 +9,7 @@ interface PageProps {
 
 async function fetchPRData(accessToken: string, owner: string, repo: string, number: number) {
   const octokit = new Octokit({ auth: accessToken })
-  
+
   const [prResp, filesResp] = await Promise.all([
     octokit.pulls.get({ owner, repo, pull_number: number }),
     octokit.pulls.listFiles({ owner, repo, pull_number: number, per_page: 100 }),
@@ -27,7 +28,7 @@ async function fetchPRData(accessToken: string, owner: string, repo: string, num
 
 async function fetchMLData(files: { filename: string; additions: number; deletions: number; patch?: string }[], prId: string) {
   const mlApiUrl = process.env.ML_API_URL ?? "http://localhost:8000"
-  
+
   const [rankingRes, clusterRes] = await Promise.allSettled([
     fetch(`${mlApiUrl}/rank`, {
       method: "POST",
@@ -51,18 +52,17 @@ async function fetchMLData(files: { filename: string; additions: number; deletio
 
 export default async function PRDetailPage({ params }: PageProps) {
   const { owner, repo, number } = await params
-  const session = await auth()
+  const session = await getSession()
 
-  if (!session?.accessToken) {
-    return <div>Not authenticated</div>
-  }
+  if (!session) redirect("/login")
 
+  const { accessToken } = session
   let prData = null
   let rankingData = null
   let clusterData = null
 
   try {
-    prData = await fetchPRData(session.accessToken, owner, repo, parseInt(number, 10))
+    prData = await fetchPRData(accessToken, owner, repo, parseInt(number, 10))
     const mlData = await fetchMLData(prData.files, number)
     rankingData = mlData.rankingData
     clusterData = mlData.clusterData
@@ -82,7 +82,7 @@ export default async function PRDetailPage({ params }: PageProps) {
         <p className="text-xs text-muted-foreground">{owner}/{repo}</p>
         <h1 className="text-lg font-semibold">{prData?.pr.title ?? `PR #${number}`}</h1>
       </div>
-      
+
       <PRReviewView
         files={prData?.files ?? []}
         rankingData={rankingData}
