@@ -36,6 +36,25 @@ try:
 except Exception as e:
     print(f"CodeBERT not loaded (using heuristics): {e}")
 
+# ── Load fine-tuned prism-reranker from HF Hub ───────────────────
+_reranker_tokenizer = None
+_reranker_model = None
+
+try:
+    from transformers import AutoTokenizer, AutoModelForSequenceClassification
+    import torch
+
+    _reranker_tokenizer = AutoTokenizer.from_pretrained(
+        "ritunjaym/prism-reranker", cache_dir="/tmp/hf-cache"
+    )
+    _reranker_model = AutoModelForSequenceClassification.from_pretrained(
+        "ritunjaym/prism-reranker", cache_dir="/tmp/hf-cache"
+    )
+    _reranker_model.eval()
+    print("Reranker model loaded successfully")
+except Exception as e:
+    print(f"Reranker not loaded (using heuristics): {e}")
+
 
 # ── Pydantic models ──────────────────────────────────────────────
 class FileInput(BaseModel):
@@ -155,13 +174,48 @@ def health():
         "status": "ok",
         "version": "1.0.0",
         "codebert": _embedder is not None,
+        "reranker": _reranker_model is not None,
     }
+
+def _reranker_score_file(f: FileInput) -> dict:
+    """Score a file using the fine-tuned prism-reranker model."""
+    import torch
+    text = f"<file>{f.filename}\n{(f.patch or '')[:512]}"
+    inputs = _reranker_tokenizer(
+        text,
+        return_tensors="pt",
+        max_length=128,
+        padding=True,
+        truncation=True,
+    )
+    with torch.no_grad():
+        logits = _reranker_model(**inputs).logits
+    score = float(torch.sigmoid(logits.squeeze(-1)).item())
+    score = min(max(score, 0.0), 1.0)
+    return {
+        "filename": f.filename,
+        "reranker_score": round(score, 4),
+        "retrieval_score": round(score, 4),
+        "final_score": round(score, 4),
+        "explanation": "prism-reranker scored",
+    }
+
 
 @app.post("/rank")
 def rank(req: RankRequest):
     start = time.time()
-    total = sum(f.additions + f.deletions for f in req.files)
-    scored = [score_file(f, total) for f in req.files]
+    if _reranker_model is not None:
+        scored = []
+        for f in req.files:
+            try:
+                scored.append(_reranker_score_file(f))
+            except Exception as e:
+                print(f"Reranker failed for {f.filename}: {e}")
+                total = sum(fi.additions + fi.deletions for fi in req.files)
+                scored.append(score_file(f, total))
+    else:
+        total = sum(f.additions + f.deletions for f in req.files)
+        scored = [score_file(f, total) for f in req.files]
     scored.sort(key=lambda x: x["final_score"], reverse=True)
     ranked = [{"rank": i + 1, **s} for i, s in enumerate(scored)]
     return {
