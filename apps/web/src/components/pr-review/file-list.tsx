@@ -13,6 +13,7 @@ export interface FileListItem {
   finalScore?: number
   rerankerScore?: number
   retrievalScore?: number
+  label?: string
   explanation?: string
   clusterId?: number
   clusterLabel?: string
@@ -25,17 +26,15 @@ interface FileListProps {
   filterClusterId?: number | null
 }
 
-function ScoreBadge({ score }: { score: number }) {
-  const tier =
-    score >= 0.8 ? "bg-red-500/20 text-red-400 border-red-500/40" :
-    score >= 0.6 ? "bg-orange-500/20 text-orange-400 border-orange-500/40" :
-    score >= 0.4 ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/40" :
-    score >= 0.2 ? "bg-blue-500/20 text-blue-400 border-blue-500/40" :
+function LabelBadge({ label }: { label: string }) {
+  const styles =
+    label === "Critical" ? "bg-red-500/20 text-red-400 border-red-500/40" :
+    label === "Important" ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/40" :
     "bg-muted text-muted-foreground border-border"
 
   return (
-    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${tier}`}>
-      {score.toFixed(2)}
+    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${styles}`}>
+      {label}
     </span>
   )
 }
@@ -83,7 +82,7 @@ export function FileList({ files, selectedFile, onSelectFile, filterClusterId }:
                 aria-selected={isSelected}
                 role="listitem"
               >
-                {file.finalScore != null && <ScoreBadge score={file.finalScore} />}
+                {file.label != null && <LabelBadge label={file.label} />}
                 <span className="flex-1 truncate font-mono text-[11px]">{file.filename}</span>
                 <span className="flex items-center gap-1 shrink-0">
                   <span className="text-green-500 text-[10px]">+{file.additions}</span>

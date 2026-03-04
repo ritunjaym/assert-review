@@ -5,6 +5,7 @@ import { FileList, FileListItem } from "./file-list"
 import { DiffViewer } from "./diff-viewer"
 import { ClusterPanel } from "@/components/cluster-panel"
 import { RankBadge } from "@/components/rank-badge"
+import { ScoreLabelBadge } from "@/components/score-label-badge"
 import { MLUnavailableBanner } from "@/components/ml-unavailable-banner"
 
 interface RankedFileData {
@@ -13,6 +14,7 @@ interface RankedFileData {
   reranker_score: number
   retrieval_score: number
   final_score: number
+  label: string
   explanation: string
 }
 
@@ -61,6 +63,7 @@ export function PRReviewView({ files, rankingData, clusterData, prTitle }: PRRev
       finalScore: rankMap.get(f.filename)?.final_score,
       rerankerScore: rankMap.get(f.filename)?.reranker_score,
       retrievalScore: rankMap.get(f.filename)?.retrieval_score,
+      label: rankMap.get(f.filename)?.label,
       explanation: rankMap.get(f.filename)?.explanation,
       clusterId: clusterMap.get(f.filename)?.id,
       clusterLabel: clusterMap.get(f.filename)?.label,
@@ -145,6 +148,9 @@ export function PRReviewView({ files, rankingData, clusterData, prTitle }: PRRev
                   retrievalScore: selectedFileRank.retrievalScore,
                   explanation: selectedFileRank.explanation,
                 }} />
+              )}
+              {selectedFileRank?.label != null && (
+                <ScoreLabelBadge label={selectedFileRank.label} />
               )}
               <span className="font-mono text-sm font-medium">{selectedFileData.filename}</span>
               <span className="ml-auto flex items-center gap-2 text-xs">

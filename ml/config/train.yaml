@@ -1,0 +1,25 @@
+model:
+  teacher_base: microsoft/codebert-base
+  student_base: distilroberta-base
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.1
+  target_modules:
+    - query
+    - value
+
+training:
+  teacher_epochs: 5
+  student_epochs: 4
+  batch_size: 8
+  teacher_lr: 2e-4
+  student_lr: 3e-4
+  seed: 42
+
+distillation:
+  alpha: 0.5
+  temperature: 4.0
+
+data:
+  train_path: ml/data/processed/pr_files.jsonl
+  max_length: 512
