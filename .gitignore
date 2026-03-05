@@ -52,7 +52,9 @@ apps/web/.vercel/
 
 # Model artifacts
 ml/models/faiss/*.faiss
+*.faiss
 ml/models/reranker/
+ml/models/reranker_onnx/
 ml/data/raw/
 ml/data/processed/
 ml/data/hf_dataset/
@@ -61,6 +63,9 @@ ml/data/hf_dataset/
 *.pt
 *.bin
 *.safetensors
+
+# Training
+wandb/
 
 # OS
 .DS_Store
