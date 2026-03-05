@@ -17,7 +17,18 @@ def export_reranker_to_onnx(
     checkpoint_path: str | None = None,
     output_path: str | None = None,
 ) -> None:
-    """Export distilled student reranker to ONNX format."""
+    """Export the distilled student reranker to ONNX format (opset 14).
+
+    Load order: local checkpoint → ``ritunjaym/prism-reranker`` on HF Hub →
+    ``microsoft/codebert-base`` (final fallback).  Verifies that the maximum
+    absolute difference between PyTorch and ONNX outputs is < 1e-3.
+
+    Args:
+        checkpoint_path: Path to a local model directory.  Defaults to
+            ``ml/models/reranker``.
+        output_path: Destination ``.onnx`` file path.  Defaults to
+            ``ml/models/reranker_onnx/model.onnx``.
+    """
     import torch
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
@@ -95,7 +106,21 @@ def quantize_onnx_model(
     onnx_path: str | None = None,
     output_path: str | None = None,
 ) -> None:
-    """INT8 quantize an ONNX model using onnxruntime."""
+    """Dynamically quantize an ONNX model to INT8 using onnxruntime.
+
+    Applies ``onnxruntime.quantization.quantize_dynamic`` with
+    ``weight_type=QInt8``.  Prints the compression ratio and verifies that the
+    quantized model can perform a forward pass.
+
+    Args:
+        onnx_path: Source FP32 ``.onnx`` file.  Defaults to
+            ``ml/models/reranker_onnx/model.onnx``.
+        output_path: Destination INT8 ``.onnx`` file.  Defaults to
+            ``ml/models/reranker_onnx/model_int8.onnx``.
+
+    Raises:
+        FileNotFoundError: If ``onnx_path`` does not exist.
+    """
     from onnxruntime.quantization import quantize_dynamic, QuantType
 
     src = Path(onnx_path or ONNX_DIR / "model.onnx")

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { FileList, FileListItem } from "./file-list"
 import { DiffViewer } from "./diff-viewer"
@@ -12,7 +12,6 @@ import { CommandPalette } from "@/components/command-palette"
 import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts-modal"
 import { PresenceBar } from "@/components/presence-bar"
 import { useKeyboardNav } from "@/hooks/useKeyboardNav"
-import { useHotkeys } from "@/hooks/use-hotkeys"
 import { usePRRoom } from "@/hooks/use-pr-room"
 
 interface RankedFileData {
@@ -94,36 +93,42 @@ export function PRReviewView({ files, rankingData, clusterData, prTitle, prId, c
     setSelectedFile(filename)
   }, [])
 
-  const { focusedFile } = useKeyboardNav({
-    files: fileNames,
-    onSelectFile: handleSelectFile,
-    onOpenComment: () => setCommentLineOpen(0),
-  })
+  const { focusedFile } = useKeyboardNav(
+    fileNames,
+    handleSelectFile,
+    () => setCommentLineOpen(0)
+  )
 
-  // ⌘K and ? hotkeys
-  useHotkeys([
-    {
-      key: "k",
-      ctrlOrMeta: true,
-      description: "Open command palette",
-      callback: () => setShowPalette(true),
-    },
-    {
-      key: "?",
-      shift: true,
-      description: "Show keyboard shortcuts",
-      callback: () => setShowShortcuts(true),
-    },
-    {
-      key: "Escape",
-      description: "Close panel / modal",
-      callback: () => {
+  // Native listeners for ⌘K, ?, Escape — avoids stale closure / recreation issues
+  const showPaletteRef = useRef(showPalette)
+  const showShortcutsRef = useRef(showShortcuts)
+  showPaletteRef.current = showPalette
+  showShortcutsRef.current = showShortcuts
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement
+      const tag = target?.tagName?.toLowerCase()
+
+      if (e.key === "k" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault()
+        setShowPalette(true)
+      } else if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
+        // Allow shift since ? requires shift on most keyboards
+        if (tag !== "input" && tag !== "textarea" && target?.getAttribute("contenteditable") !== "true") {
+          e.preventDefault()
+          setShowShortcuts(true)
+        }
+      } else if (e.key === "Escape") {
         setShowPalette(false)
         setShowShortcuts(false)
         setCommentLineOpen(null)
-      },
-    },
-  ])
+      }
+    }
+
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [])
 
   // PartyKit presence
   const { presences, connected } = usePRRoom(
@@ -262,6 +267,7 @@ export function PRReviewView({ files, rankingData, clusterData, prTitle, prId, c
               currentUser={currentUser}
               activeCommentLine={commentLineOpen}
               onCommentClose={() => setCommentLineOpen(null)}
+              commentOpen={commentLineOpen !== null}
             />
           </div>
         ) : (
@@ -277,6 +283,7 @@ export function PRReviewView({ files, rankingData, clusterData, prTitle, prId, c
         <span><kbd className="font-mono bg-muted border border-border rounded px-1">c</kbd> comment</span>
         <span><kbd className="font-mono bg-muted border border-border rounded px-1">⌘K</kbd> search</span>
         <span><kbd className="font-mono bg-muted border border-border rounded px-1">?</kbd> shortcuts</span>
+        <span><kbd className="font-mono bg-muted border border-border rounded px-1">g</kbd><kbd className="font-mono bg-muted border border-border rounded px-1">d</kbd> dashboard</span>
       </div>
 
       {/* Modals */}

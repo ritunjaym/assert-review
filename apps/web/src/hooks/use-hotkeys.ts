@@ -44,11 +44,7 @@ export const KEYBOARD_SHORTCUTS: Array<{ keys: string; description: string; cate
   { keys: "k / ↑", description: "Previous file", category: "Navigation" },
   { keys: "⌘K", description: "Open command palette", category: "Navigation" },
   { keys: "?", description: "Show keyboard shortcuts", category: "Navigation" },
-  { keys: "o", description: "Toggle Review Order mode", category: "View" },
   { keys: "Esc", description: "Close panel / modal", category: "View" },
-  { keys: "1-9", description: "Jump to file by rank", category: "Navigation" },
-  { keys: "/", description: "Focus search", category: "Navigation" },
   { keys: "c", description: "Comment on focused line", category: "Actions" },
   { keys: "g d", description: "Go to dashboard", category: "Navigation" },
-  { keys: "Enter", description: "Expand/collapse focused file", category: "Navigation" },
 ]

@@ -1,7 +1,7 @@
 """
 CodeLens — ML Evaluation Suite
 ================================
-Loads the test split, runs all 5 baselines, computes retrieval metrics
+Loads the test split, runs all 6 baselines, computes retrieval metrics
 with 95 % bootstrap CI, runs paired t-tests vs FullPipeline, then saves:
   - ml/eval/results.json
   - ml/eval/results_table.md
@@ -35,6 +35,7 @@ from ml.eval.metrics import (
 from ml.eval.baselines import (
     BM25Baseline,
     DenseOnlyBaseline,
+    DistilledModelBaseline,
     FileSizeBaseline,
     FullPipelineBaseline,
     RandomBaseline,
@@ -44,11 +45,12 @@ from ml.eval.baselines import (
 
 RELEVANCE_THRESHOLD = 0.5   # importance_score ≥ this → "relevant"
 BASELINES: dict[str, object] = {
-    "Random":       RandomBaseline(seed=42),
-    "FileSize":     FileSizeBaseline(),
-    "BM25":         BM25Baseline(),
-    "DenseOnly":    DenseOnlyBaseline(),
-    "FullPipeline": FullPipelineBaseline(),
+    "Random":         RandomBaseline(seed=42),
+    "FileSize":       FileSizeBaseline(),
+    "BM25":           BM25Baseline(),
+    "DenseOnly":      DenseOnlyBaseline(),
+    "FullPipeline":   FullPipelineBaseline(),
+    "DistilledModel": DistilledModelBaseline(),
 }
 
 

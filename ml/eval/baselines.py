@@ -8,11 +8,12 @@ Each returned dict is the original file dict extended with a ``baseline_score``
 key (float in [0, 1]).  The list is sorted by ``baseline_score`` descending.
 
 Baselines (weakest → strongest):
-1. RandomBaseline        — uniform random (floor)
-2. FileSizeBaseline      — sigmoid of (additions + deletions)
-3. BM25Baseline          — BM25 score against code-importance keywords
-4. DenseOnlyBaseline     — CodeBERT cosine similarity (no reranker)
-5. FullPipelineBaseline  — prism-reranker (ritunjaym/prism-reranker)
+1. RandomBaseline          — uniform random (floor)
+2. FileSizeBaseline        — sigmoid of (additions + deletions)
+3. BM25Baseline            — BM25 score against code-importance keywords
+4. DenseOnlyBaseline       — CodeBERT cosine similarity (no reranker)
+5. FullPipelineBaseline    — prism-reranker (ritunjaym/prism-reranker, PyTorch)
+6. DistilledModelBaseline  — prism-reranker via ONNX INT8 (CPU-optimised)
 """
 from __future__ import annotations
 
@@ -296,6 +297,109 @@ class FullPipelineBaseline:
         return sorted(scored, key=lambda x: x["baseline_score"], reverse=True)
 
 
+# ── 6. Distilled Model (ONNX INT8) ────────────────────────────────────────────
+
+class DistilledModelBaseline:
+    """Ranks files using the distilled student model (``ritunjaym/prism-reranker``).
+
+    Attempts ONNX INT8 inference first (from ``ml/models/reranker_onnx/model_int8.onnx``)
+    for CPU-efficient scoring, then falls back to PyTorch if ONNX is unavailable.
+    Falls back to :class:`FileSizeBaseline` if neither can be loaded.
+    """
+
+    def __init__(self) -> None:
+        self._tokenizer = None
+        self._ort_session = None   # onnxruntime InferenceSession
+        self._pt_model = None      # fallback PyTorch model
+        self._loaded = False
+
+    def _load(self) -> None:
+        if self._loaded:
+            return
+        self._loaded = True
+        try:
+            from transformers import AutoTokenizer
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                "ritunjaym/prism-reranker", cache_dir="/tmp/hf-cache"
+            )
+        except Exception as e:
+            print(f"DistilledModelBaseline: tokenizer load failed: {e}")
+            return
+
+        # Try ONNX INT8 first
+        try:
+            import onnxruntime as ort
+            from pathlib import Path
+            onnx_path = (
+                Path(__file__).parent.parent / "models" / "reranker_onnx" / "model_int8.onnx"
+            )
+            if onnx_path.exists():
+                self._ort_session = ort.InferenceSession(str(onnx_path))
+                print(f"DistilledModelBaseline: ONNX INT8 loaded from {onnx_path}")
+                return
+        except Exception:
+            pass
+
+        # Fallback: PyTorch
+        try:
+            from transformers import AutoModelForSequenceClassification
+            self._pt_model = AutoModelForSequenceClassification.from_pretrained(
+                "ritunjaym/prism-reranker", cache_dir="/tmp/hf-cache"
+            )
+            self._pt_model.eval()
+            print("DistilledModelBaseline: PyTorch fallback loaded")
+        except Exception as e:
+            print(f"DistilledModelBaseline: could not load model: {e}")
+
+    def rank(self, files: list[dict]) -> list[dict]:
+        """Rank files using the ONNX INT8 distilled reranker (or PyTorch fallback).
+
+        Args:
+            files: List of file dicts with ``filename`` and ``patch``.
+
+        Returns:
+            Files sorted by distilled model score (desc), with ``baseline_score``.
+        """
+        self._load()
+        if self._tokenizer is None or (self._ort_session is None and self._pt_model is None):
+            return FileSizeBaseline().rank(files)
+
+        texts = [
+            f"<file>{f.get('filename', '')}\n{(f.get('patch') or '')[:512]}"
+            for f in files
+        ]
+
+        if self._ort_session is not None:
+            import numpy as np
+            enc = self._tokenizer(
+                texts, padding=True, truncation=True, max_length=128, return_tensors="np"
+            )
+            ort_inputs = {
+                "input_ids": enc["input_ids"].astype(np.int64),
+                "attention_mask": enc["attention_mask"].astype(np.int64),
+                "token_type_ids": enc.get(
+                    "token_type_ids", np.zeros_like(enc["input_ids"])
+                ).astype(np.int64),
+            }
+            logits = self._ort_session.run(None, ort_inputs)[0].flatten().tolist()
+        else:
+            import torch
+            enc = self._tokenizer(
+                texts, padding=True, truncation=True, max_length=128, return_tensors="pt"
+            )
+            with torch.no_grad():
+                logits = self._pt_model(**enc).logits.squeeze(-1).tolist()
+
+        lo, hi = min(logits), max(logits)
+        if hi - lo < 1e-6:
+            scores = [0.5] * len(files)
+        else:
+            scores = [(l - lo) / (hi - lo) for l in logits]
+
+        scored = [{**f, "baseline_score": scores[i]} for i, f in enumerate(files)]
+        return sorted(scored, key=lambda x: x["baseline_score"], reverse=True)
+
+
 # ── Legacy ────────────────────────────────────────────────────────────────────
 # Keep old PathHeuristicBaseline for backward compatibility with evaluate.py
 
@@ -308,6 +412,14 @@ class PathHeuristicBaseline:
     """Path-based heuristic baseline (legacy, kept for backward compat)."""
 
     def rank(self, pr_files: list[dict]) -> list[dict]:
+        """Rank files by path-based heuristics.
+
+        Args:
+            pr_files: List of file dicts with at least ``filename``.
+
+        Returns:
+            Files sorted by path score (desc), with ``baseline_score``.
+        """
         scored = []
         for f in pr_files:
             filename = f.get("filename", "")

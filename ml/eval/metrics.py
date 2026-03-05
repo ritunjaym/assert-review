@@ -210,10 +210,18 @@ def bootstrap_ci(
 # ── Legacy regression-style metrics (kept for backward compat) ─────────────────
 
 def ranking_metrics(y_true: list[float], y_pred: list[float]) -> dict[str, float]:
-    """
-    Compute ranking metrics between true importance scores and predicted scores.
+    """Compute regression and ranking metrics between predicted and true scores.
 
-    Returns: MSE, MAE, Spearman rho, Kendall tau, NDCG@5, NDCG@10
+    Args:
+        y_true: Ground-truth importance scores (floats).
+        y_pred: Predicted importance scores (floats), same length as ``y_true``.
+
+    Returns:
+        Dict with keys: ``mse``, ``mae``, ``spearman_rho``, ``kendall_tau``,
+        ``ndcg@5``, ``ndcg@10``.
+
+    Raises:
+        ValueError: If ``y_true`` and ``y_pred`` have different lengths.
     """
     if len(y_true) != len(y_pred):
         raise ValueError("y_true and y_pred must have the same length")
@@ -246,14 +254,18 @@ def retrieval_metrics(
     relevant_indices: list[list[int]],
     k_values: list[int] = (5, 10),
 ) -> dict[str, float]:
-    """
-    Compute retrieval metrics: Recall@k and MRR.
+    """Compute FAISS retrieval quality metrics: Recall@k and MRR.
 
     Args:
-        queries:            Not used directly; kept for API compatibility.
-        retrieved_indices:  For each query, list of retrieved item indices.
-        relevant_indices:   For each query, list of relevant item indices.
-        k_values:           List of k values for Recall@k.
+        queries: Query embedding arrays (not used for scoring; kept for API
+            compatibility with earlier callers).
+        retrieved_indices: For each query, the list of retrieved item indices
+            in ranked order (index 0 = highest rank).
+        relevant_indices: For each query, the list of relevant item indices.
+        k_values: Cutoff depths for Recall@k (default ``(5, 10)``).
+
+    Returns:
+        Dict with keys ``recall@{k}`` for each k in ``k_values``, plus ``mrr``.
     """
     if not queries:
         return {}
@@ -288,9 +300,16 @@ def retrieval_metrics(
 
 
 def clustering_metrics(embeddings: np.ndarray, labels: list[int]) -> dict[str, float]:
-    """
-    Compute clustering quality: Silhouette score and Davies-Bouldin index.
-    Requires sklearn.
+    """Compute clustering quality metrics using sklearn.
+
+    Args:
+        embeddings: 2-D array of shape ``(n_samples, n_features)``.
+        labels: Cluster assignment for each sample (integer labels).
+
+    Returns:
+        Dict with keys ``silhouette`` (higher is better, in [-1, 1]) and
+        ``davies_bouldin`` (lower is better, ≥ 0).  Returns zeros when fewer
+        than two distinct clusters are present or sklearn is unavailable.
     """
     unique_labels = set(labels)
     if len(unique_labels) < 2:

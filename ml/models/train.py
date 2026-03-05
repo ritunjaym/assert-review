@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 
 
 def set_seeds(seed: int) -> None:
+    """Set all random seeds for reproducibility.
+
+    Args:
+        seed: Integer seed applied to Python ``random``, NumPy, and PyTorch
+            (including CUDA if available).
+    """
     random.seed(seed)
     np.random.seed(seed)
     try:
@@ -34,7 +40,19 @@ def set_seeds(seed: int) -> None:
 
 
 def load_pairs(path: str) -> tuple[list[str], list[int]]:
-    """Load reranker_pairs.jsonl — generate from pr_files.jsonl if missing."""
+    """Load training pairs from ``reranker_pairs.jsonl``.
+
+    If the file is missing, it is auto-generated from ``pr_files.jsonl`` by
+    calling :func:`ml.data.build_reranker_pairs.build_pairs`.
+
+    Args:
+        path: Path to ``pr_files.jsonl`` (used to derive the pairs file location
+            and as input for auto-generation).
+
+    Returns:
+        ``(texts, labels)`` where ``texts`` is a list of input strings and
+        ``labels`` is a list of binary int labels (1 = important, 0 = not).
+    """
     p = Path(path)
     pairs_path = p.parent / "reranker_pairs.jsonl"
 
@@ -59,7 +77,18 @@ def load_pairs(path: str) -> tuple[list[str], list[int]]:
 
 
 def make_dataset(texts: list[str], labels: list[int], tokenizer, max_length: int):
-    """Create a PyTorch Dataset from texts + labels."""
+    """Create a PyTorch ``Dataset`` from tokenized texts and binary labels.
+
+    Args:
+        texts: Raw input strings to tokenize.
+        labels: Binary int labels (0 or 1) parallel to ``texts``.
+        tokenizer: Hugging Face tokenizer.
+        max_length: Maximum token sequence length (truncation + padding).
+
+    Returns:
+        A ``torch.utils.data.Dataset`` whose items are dicts with keys
+        ``input_ids``, ``attention_mask``, ``token_type_ids``, and ``labels``.
+    """
     import torch
     from torch.utils.data import Dataset
 
@@ -93,10 +122,27 @@ def make_dataset(texts: list[str], labels: list[int], tokenizer, max_length: int
 
 
 def train_teacher(cfg: DictConfig, texts: list[str], labels: list[int], wandb_run) -> tuple:
-    """Train teacher model with LoRA. Returns (model, tokenizer)."""
+    """Train the teacher model (CodeBERT + LoRA) with BCEWithLogitsLoss.
+
+    Uses a linear LR schedule with 10 % warmup, gradient clipping at 1.0, and
+    patience-2 early stopping on validation loss.
+
+    Args:
+        cfg: Hydra config with ``model``, ``training``, and ``data`` sections.
+        texts: Training pair texts.
+        labels: Binary training labels.
+        wandb_run: Active W&B run (or ``None`` to skip logging).
+
+    Returns:
+        ``(model, tokenizer)`` tuple — model is still PEFT-wrapped.
+    """
     import torch
     from torch.utils.data import DataLoader
-    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+    from transformers import (
+        AutoModelForSequenceClassification,
+        AutoTokenizer,
+        get_linear_schedule_with_warmup,
+    )
     from peft import get_peft_model, LoraConfig, TaskType
     from sklearn.metrics import roc_auc_score
 
@@ -134,6 +180,14 @@ def train_teacher(cfg: DictConfig, texts: list[str], labels: list[int], wandb_ru
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
 
+    total_steps = len(train_loader) * cfg.training.teacher_epochs
+    warmup_steps = max(1, int(0.1 * total_steps))
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps
+    )
+
+    best_val_loss = float("inf")
+    patience_counter = 0
     global_step = 0
     for epoch in range(cfg.training.teacher_epochs):
         model.train()
@@ -153,7 +207,9 @@ def train_teacher(cfg: DictConfig, texts: list[str], labels: list[int], wandb_ru
             logits = outputs.logits.squeeze(-1)
             loss = criterion(logits, batch_labels)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
+            scheduler.step()
 
             epoch_loss += loss.item()
             global_step += 1
@@ -198,6 +254,19 @@ def train_teacher(cfg: DictConfig, texts: list[str], labels: list[int], wandb_ru
                 "epoch": epoch + 1,
             })
 
+        # Early stopping (patience = 2)
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            if patience_counter >= 2:
+                logger.info(
+                    "Teacher early stopping at epoch %d (patience exceeded)",
+                    epoch + 1,
+                )
+                break
+
     return model, tokenizer
 
 
@@ -209,11 +278,31 @@ def train_student(
     labels: list[int],
     wandb_run,
 ) -> tuple:
-    """Train student via knowledge distillation. Returns (model, tokenizer)."""
+    """Train the student model via knowledge distillation from the teacher.
+
+    Uses combined hard-label BCE and soft-label distillation loss:
+    ``(1 - α) * hard + α * soft``.  Applies LR warmup (10 %), gradient
+    clipping (1.0), and patience-2 early stopping.
+
+    Args:
+        cfg: Hydra config with ``model``, ``training``, and ``distillation`` sections.
+        teacher_model: Trained teacher (PEFT-wrapped CodeBERT + LoRA).
+        teacher_tokenizer: Teacher tokenizer.
+        texts: Training pair texts.
+        labels: Binary training labels.
+        wandb_run: Active W&B run (or ``None``).
+
+    Returns:
+        ``(student_model, student_tokenizer)`` tuple.
+    """
     import torch
     import torch.nn.functional as F
     from torch.utils.data import DataLoader
-    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+    from transformers import (
+        AutoModelForSequenceClassification,
+        AutoTokenizer,
+        get_linear_schedule_with_warmup,
+    )
     from sklearn.metrics import roc_auc_score
 
     logger.info("=== Training Student (%s, distillation) ===", cfg.model.student_base)
@@ -246,6 +335,14 @@ def train_student(
     alpha = cfg.distillation.alpha
     T = cfg.distillation.temperature
 
+    total_steps = len(train_loader) * cfg.training.student_epochs
+    warmup_steps = max(1, int(0.1 * total_steps))
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps
+    )
+
+    best_val_loss = float("inf")
+    patience_counter = 0
     global_step = 0
     for epoch in range(cfg.training.student_epochs):
         student_model.train()
@@ -281,7 +378,9 @@ def train_student(
             loss = (1 - alpha) * loss_hard + alpha * loss_soft
 
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(student_model.parameters(), 1.0)
             optimizer.step()
+            scheduler.step()
 
             epoch_loss += loss.item()
             global_step += 1
@@ -331,10 +430,30 @@ def train_student(
                 "epoch": epoch + 1,
             })
 
+        # Early stopping (patience = 2)
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            if patience_counter >= 2:
+                logger.info(
+                    "Student early stopping at epoch %d (patience exceeded)",
+                    epoch + 1,
+                )
+                break
+
     return student_model, student_tokenizer
 
 
 def save_checkpoint(model, tokenizer, output_dir: Path) -> None:
+    """Save a model and tokenizer checkpoint, merging LoRA weights if present.
+
+    Args:
+        model: A Hugging Face model (optionally PEFT-wrapped).
+        tokenizer: Corresponding tokenizer.
+        output_dir: Directory to write checkpoint files.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     # Unwrap PEFT if needed
     try:
@@ -376,6 +495,17 @@ def main(cfg: DictConfig) -> None:
 
     # Save teacher checkpoint
     teacher_dir = Path("ml/models/reranker_teacher")
+
+    # Save LoRA adapter weights separately (~3 MB, before merge)
+    lora_adapter_dir = teacher_dir / "lora_adapter"
+    lora_adapter_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        teacher_model.save_pretrained(str(lora_adapter_dir))
+        teacher_tokenizer.save_pretrained(str(lora_adapter_dir))
+        logger.info("LoRA adapter saved to %s", lora_adapter_dir)
+    except Exception as e:
+        logger.warning("Could not save LoRA adapter separately: %s", e)
+
     save_checkpoint(teacher_model, teacher_tokenizer, teacher_dir)
 
     # Train student with distillation

@@ -93,6 +93,41 @@ except Exception as e:
     logger.warning("FAISS index not loaded: %s", e)
 
 
+# ── Cluster auto-labeling helpers ─────────────────────────────────────────────
+import re as _re
+
+_TEST_RE = _re.compile(r"test|spec", _re.IGNORECASE)
+_DEP_RE = _re.compile(
+    r"package\.json|requirements|setup\.py|pyproject\.toml|go\.(mod|sum)|Cargo\.toml",
+    _re.IGNORECASE,
+)
+_DOC_RE = _re.compile(r"\.md$|docs?/|readme|changelog|\.rst$", _re.IGNORECASE)
+
+
+def _label_cluster(filenames: list[str], patches: list[str]) -> str:
+    """Auto-label a cluster from filenames and patch content."""
+    n = len(filenames)
+    if n == 0:
+        return "Core changes"
+    majority = n // 2 + 1
+    if sum(1 for f in filenames if _TEST_RE.search(f)) >= majority:
+        return "Test changes"
+    if sum(1 for f in filenames if _DEP_RE.search(f)) >= majority:
+        return "Dependency update"
+    if sum(1 for f in filenames if _DOC_RE.search(f)) >= majority:
+        return "Documentation"
+    cleanup = sum(1 for p in patches if p and p.count("\n-") > p.count("\n+"))
+    if cleanup >= majority:
+        return "Cleanup / Refactor"
+    dirs = [f.split("/")[0] for f in filenames if "/" in f]
+    if dirs:
+        from collections import Counter
+        top, cnt = Counter(dirs).most_common(1)[0]
+        if cnt >= majority:
+            return top
+    return "Core changes"
+
+
 # ── Pydantic models ───────────────────────────────────────────────────────────
 class FileInput(BaseModel):
     filename: str
@@ -116,6 +151,11 @@ class ClusterRequest(BaseModel):
 class RetrieveRequest(BaseModel):
     query_diff: str
     k: int = 10
+
+
+class HunkRankRequest(BaseModel):
+    filename: str
+    patch: str
 
 
 # ── Heuristic importance scoring ──────────────────────────────────────────────
@@ -205,6 +245,7 @@ def score_file(f: FileInput, total_changes: int) -> dict:
         "reranker_score": round(score, 4),
         "retrieval_score": round(score * 0.9, 4),
         "final_score": round(score, 4),
+        "label": _score_label(score),
         "explanation": ", ".join(reasons).capitalize(),
     }
 
@@ -241,9 +282,19 @@ def _reranker_rank_files(files: list[FileInput]) -> list[dict]:
             "reranker_score": round(score, 4),
             "retrieval_score": round(score * 0.9, 4),
             "final_score": round(score, 4),
+            "label": _score_label(score),
             "explanation": ", ".join(reasons).capitalize(),
         })
     return results
+
+
+# ── Score label ───────────────────────────────────────────────────────────────
+def _score_label(score: float) -> str:
+    if score >= 0.7:
+        return "Critical"
+    if score >= 0.4:
+        return "Important"
+    return "Low"
 
 
 # ── FAISS query embedding ─────────────────────────────────────────────────────
@@ -355,33 +406,107 @@ def cluster(req: ClusterRequest):
     start = time.time()
     try:
         files = req.files
-        if len(files) < 4:
+        filenames = [f.filename for f in files]
+        patches = [f.patch or "" for f in files]
+
+        if len(files) < 2:
             groups = [
-                {
-                    "cluster_id": i,
-                    "label": f.filename.split("/")[-1],
-                    "files": [f.filename],
-                    "coherence": 1.0,
-                }
+                {"cluster_id": i, "label": f.filename.split("/")[-1],
+                 "files": [f.filename], "coherence": 1.0}
                 for i, f in enumerate(files)
             ]
             return {"pr_id": req.pr_id, "groups": groups}
 
-        dir_map: dict[str, list[str]] = {}
-        for f in files:
-            parts = f.filename.split("/")
-            key = parts[0] if len(parts) > 1 else "root"
-            dir_map.setdefault(key, []).append(f.filename)
+        # ── Embedding-based HDBSCAN clustering ────────────────────────────────
+        embeddings = None
+        labels = None
 
-        groups = [
-            {
-                "cluster_id": i,
-                "label": dir_name,
-                "files": fnames,
-                "coherence": round(0.7 + 0.3 * min(len(fnames) / 5, 1.0), 2),
-            }
-            for i, (dir_name, fnames) in enumerate(dir_map.items())
-        ]
+        if _embedder is not None:
+            try:
+                import torch
+
+                tokenizer, model = _embedder
+                texts = [
+                    f"<file>{f.filename}</file><diff>{(f.patch or '')[:512]}</diff>"
+                    for f in files
+                ]
+                inputs = tokenizer(
+                    texts, padding=True, truncation=True,
+                    max_length=128, return_tensors="pt"
+                )
+                with torch.no_grad():
+                    out = model(**inputs)
+                emb = out.last_hidden_state.mean(dim=1)
+                norms = emb.norm(dim=1, keepdim=True) + 1e-8
+                embeddings = (emb / norms).numpy().astype(np.float32)
+
+                import hdbscan as _hdbscan
+                clusterer = _hdbscan.HDBSCAN(
+                    min_cluster_size=2, metric="euclidean",
+                    cluster_selection_method="eom",
+                )
+                labels = clusterer.fit_predict(embeddings).tolist()
+            except Exception as e:
+                logger.warning("Embedding clustering failed, using directory fallback: %s", e)
+                embeddings = None
+                labels = None
+
+        # ── Directory-based fallback ───────────────────────────────────────────
+        if labels is None:
+            from collections import defaultdict as _dd
+            dir_map: dict[str, list[int]] = _dd(list)
+            for i, f in enumerate(files):
+                parts = f.filename.split("/")
+                key = parts[0] if len(parts) > 1 else "root"
+                dir_map[key].append(i)
+            labels = [0] * len(files)
+            for cluster_id, idxs in enumerate(dir_map.values()):
+                for idx in idxs:
+                    labels[idx] = cluster_id
+
+        # ── Assemble groups ────────────────────────────────────────────────────
+        from collections import defaultdict as _dd2
+        cluster_to_idxs: dict[int, list[int]] = _dd2(list)
+        for i, lbl in enumerate(labels):
+            cluster_to_idxs[lbl].append(i)
+
+        groups = []
+        output_id = 0
+
+        for lbl in sorted(k for k in cluster_to_idxs if k >= 0):
+            idxs = cluster_to_idxs[lbl]
+            c_filenames = [filenames[i] for i in idxs]
+            c_patches = [patches[i] for i in idxs]
+            label = _label_cluster(c_filenames, c_patches)
+
+            if embeddings is not None and len(idxs) > 1:
+                e = embeddings[idxs]
+                sim = e @ e.T
+                mask = np.ones(sim.shape, dtype=bool)
+                np.fill_diagonal(mask, False)
+                coherence = float(np.clip(np.mean(sim[mask]), 0.0, 1.0))
+            else:
+                coherence = 1.0 if len(idxs) == 1 else round(0.7 + 0.3 * min(len(idxs) / 5, 1.0), 2)
+
+            groups.append({
+                "cluster_id": output_id,
+                "label": label,
+                "files": c_filenames,
+                "coherence": round(coherence, 2),
+            })
+            output_id += 1
+
+        # Noise points (-1) as singletons
+        if -1 in cluster_to_idxs:
+            for idx in cluster_to_idxs[-1]:
+                groups.append({
+                    "cluster_id": output_id,
+                    "label": filenames[idx].split("/")[-1],
+                    "files": [filenames[idx]],
+                    "coherence": 1.0,
+                })
+                output_id += 1
+
         return {"pr_id": req.pr_id, "groups": groups}
     except Exception as e:
         logger.error("cluster endpoint failed: %s", e)
@@ -423,6 +548,87 @@ def retrieve(req: RetrieveRequest):
     except Exception as e:
         logger.error("retrieve endpoint failed: %s", e)
         return JSONResponse(status_code=500, content={"error": str(e), "code": "RETRIEVE_ERROR"})
+    finally:
+        elapsed = (time.time() - start) * 1000
+        _latency_ms.append(elapsed)
+        _request_count += 1
+
+
+@app.post("/rank_hunks")
+def rank_hunks(req: HunkRankRequest):
+    """Split patch into individual hunks and score each independently."""
+    global _request_count
+    start = time.time()
+    try:
+        # Split on @@ hunk headers; drop the first empty segment before first @@
+        raw_hunks = req.patch.split("@@")
+        # Reassemble: each hunk = "@@ <header> @@" + body
+        hunks = []
+        i = 1  # index 0 is empty string before first @@
+        while i + 1 < len(raw_hunks):
+            header = raw_hunks[i].strip()
+            body = raw_hunks[i + 1] if i + 1 < len(raw_hunks) else ""
+            hunks.append(f"@@ {header} @@{body}")
+            i += 2
+
+        if not hunks:
+            return {"filename": req.filename, "hunks": []}
+
+        # Score each hunk
+        scored_hunks = []
+        if _reranker_model is not None:
+            texts = [f"<file>{req.filename}\n{h[:512]}" for h in hunks]
+            try:
+                import torch
+                enc = _reranker_tokenizer(
+                    texts, padding=True, truncation=True,
+                    max_length=128, return_tensors="pt"
+                )
+                with torch.no_grad():
+                    out = _reranker_model(**enc)
+                    logits = out.logits.squeeze(-1)
+                lo, hi = logits.min().item(), logits.max().item()
+                if hi - lo < 1e-6:
+                    scores = [0.5] * len(hunks)
+                else:
+                    scores = [(l - lo) / (hi - lo) for l in logits.tolist()]
+            except Exception as e:
+                logger.warning("Reranker hunk scoring failed: %s", e)
+                scores = [0.5] * len(hunks)
+        else:
+            # Heuristic: score based on hunk size and security keywords
+            scores = []
+            for h in hunks:
+                added = h.count("\n+")
+                removed = h.count("\n-")
+                size_factor = min((added + removed) / 20.0, 1.0)
+                sec_factor = 0.3 if any(
+                    kw in h.lower() for kw in
+                    ["auth", "crypto", "secret", "token", "password", "security"]
+                ) else 0.0
+                scores.append(min(0.3 + 0.5 * size_factor + sec_factor, 1.0))
+
+        for i, (hunk_text, score) in enumerate(zip(hunks, scores)):
+            # Extract hunk header line count info
+            lines_added = hunk_text.count("\n+")
+            lines_removed = hunk_text.count("\n-")
+            scored_hunks.append({
+                "hunk_index": i,
+                "score": round(score, 4),
+                "label": _score_label(score),
+                "lines_added": lines_added,
+                "lines_removed": lines_removed,
+                "preview": hunk_text[:200],
+            })
+
+        scored_hunks.sort(key=lambda x: x["score"], reverse=True)
+        return {
+            "filename": req.filename,
+            "hunks": scored_hunks,
+        }
+    except Exception as e:
+        logger.error("rank_hunks endpoint failed: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e), "code": "RANK_HUNKS_ERROR"})
     finally:
         elapsed = (time.time() - start) * 1000
         _latency_ms.append(elapsed)

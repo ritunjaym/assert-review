@@ -11,6 +11,7 @@ interface CommentThreadProps {
   onResolve: (id: string) => void
   onDelete: (id: string) => void
   currentUser?: { name: string; image?: string }
+  autoOpen?: boolean
 }
 
 function CommentItem({
@@ -70,9 +71,10 @@ export function CommentThread({
   onResolve,
   onDelete,
   currentUser,
+  autoOpen,
 }: CommentThreadProps) {
   const [body, setBody] = useState("")
-  const [isOpen, setIsOpen] = useState(comments.length > 0)
+  const [isOpen, setIsOpen] = useState(autoOpen || comments.length > 0)
 
   const lineComments = comments.filter(c => c.line_number === lineNumber)
 

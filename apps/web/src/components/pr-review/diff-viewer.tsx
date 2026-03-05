@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect, useRef } from "react"
 import React from "react"
 import { useComments } from "@/hooks/use-comments"
 import { CommentThread } from "@/components/comment-thread"
@@ -21,6 +21,7 @@ interface DiffViewerProps {
   activeCommentLine?: number | null
   onCommentClose?: () => void
   isLoading?: boolean
+  commentOpen?: boolean
 }
 
 function parsePatch(patch: string): DiffLine[] {
@@ -56,11 +57,27 @@ function LineNumber({ n }: { n?: number }) {
   )
 }
 
-export function DiffViewer({ patch, filename, viewMode, prId, currentUser, isLoading }: DiffViewerProps) {
+export function DiffViewer({ patch, filename, viewMode, prId, currentUser, isLoading, commentOpen }: DiffViewerProps) {
   const lines = useMemo(() => parsePatch(patch), [patch])
   const [activeRow, setActiveRow] = useState<number | null>(null)
   const [failedLines, setFailedLines] = useState<Set<number>>(new Set())
   const { comments, addComment, resolveComment, deleteComment } = useComments(prId ?? "", filename)
+  const autoOpenRowRef = useRef<number | null>(null)
+
+  // When commentOpen becomes true (from keyboard 'c' shortcut), open the first commentable row
+  useEffect(() => {
+    if (!commentOpen) return
+    const firstCommentableIndex = lines.findIndex(l => l.type !== "hunk-header" && (l.newLineNum !== undefined || l.oldLineNum !== undefined))
+    if (firstCommentableIndex >= 0) {
+      autoOpenRowRef.current = firstCommentableIndex
+      setActiveRow(firstCommentableIndex)
+      setTimeout(() => {
+        const textarea = document.querySelector<HTMLTextAreaElement>('[aria-label^="Comment on line"]')
+        textarea?.focus()
+        autoOpenRowRef.current = null
+      }, 50)
+    }
+  }, [commentOpen, lines])
 
   const handleAddComment = (lineNumber: number, body: string) => {
     addComment(lineNumber, body, currentUser?.name ?? "anonymous", currentUser?.image ?? "")
@@ -185,6 +202,7 @@ export function DiffViewer({ patch, filename, viewMode, prId, currentUser, isLoa
                         onResolve={resolveComment}
                         onDelete={deleteComment}
                         currentUser={currentUser}
+                        autoOpen={commentOpen && i === autoOpenRowRef.current}
                       />
                     </td>
                   </tr>
