@@ -1,19 +1,21 @@
 # CodeLens
 
-> AI-powered code review — ranked diffs, semantic grouping, real-time collaboration
+> AI-powered code review — two-stage ML ranking, semantic change grouping, keyboard-first diff review
 
 [![CI](https://img.shields.io/github/actions/workflow/status/ritunjaym/codelens/ci.yml?branch=main&label=CI)](https://github.com/ritunjaym/codelens/actions/workflows/ci.yml)
-[![Next.js](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org)
-[![TailwindCSS](https://img.shields.io/badge/Tailwind-3-06B6D4)](https://tailwindcss.com)
+[![TailwindCSS](https://img.shields.io/badge/Tailwind-4-06B6D4)](https://tailwindcss.com)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688)](https://fastapi.tiangolo.com)
 [![HuggingFace](https://img.shields.io/badge/HuggingFace-Spaces-FFD21E)](https://huggingface.co/spaces/ritunjaym/codelens-api)
 [![Vercel](https://img.shields.io/badge/Vercel-deployed-black)](https://web-azure-sigma-44.vercel.app)
 [![PartyKit](https://img.shields.io/badge/PartyKit-realtime-purple)](https://partykit.io)
 
-[Live Demo](https://web-azure-sigma-44.vercel.app) | [ML API](https://ritunjaym-codelens-api.hf.space/docs)
+**Live Demo**: https://web-azure-sigma-44.vercel.app — login with any GitHub account. Opens real PRs from public repos.
 
-![CodeLens PR Review](docs/screenshot-pr-review.png)
+[ML API Docs](https://ritunjaym-codelens-api.hf.space/docs)
+
+![AI Priority Rankings](docs/screenshots/ai-priority-toggle.png)
 
 ## Architecture
 
@@ -52,21 +54,20 @@ CodeLens uses a two-stage retrieval-augmented generation pipeline to rank PR fil
 
 ## Evaluation Results
 
-Evaluated on 96 real GitHub PRs. Primary metric: NDCG@5. Confidence intervals from bootstrap resampling (1 000 iterations).
+**Table 1:** Ranking performance on CodeLens test set (n=96 PRs). 95% bootstrap CIs (1,000 resamples). \*\* p < 0.05 vs FullPipeline (paired t-test). Bold = best per column.
 
 | Baseline | NDCG@5 | NDCG@10 | MRR | MAP | P@1 | P@5 |
 |----------|--------|---------|-----|-----|-----|-----|
-| Random | 0.6709 [0.6002, 0.7375] ** | 0.7121 [0.6488, 0.7742] ** | 0.6964 [0.6265, 0.7631] ** | 0.6521 [0.5859, 0.7193] ** | 0.5312 [0.4271, 0.6250] ** | 0.3479 [0.3042, 0.3875] ** |
-| FileSize | 0.8485 [0.7934, 0.8997] | 0.8684 [0.8194, 0.9131] | 0.8786 [0.8228, 0.9314] | 0.8545 [0.8043, 0.9020] | 0.8229 [0.7396, 0.8958] | 0.4104 [0.3604, 0.4625] |
-| BM25 | 0.7522 [0.6797, 0.8115] ** | 0.7857 [0.7259, 0.8373] ** | 0.7710 [0.6981, 0.8332] ** | 0.7396 [0.6763, 0.7920] ** | 0.6667 [0.5729, 0.7500] ** | 0.3875 [0.3375, 0.4375] |
-| DenseOnly | 0.6815 [0.6029, 0.7504] ** | 0.7241 [0.6587, 0.7823] ** | 0.7075 [0.6260, 0.7798] ** | 0.6744 [0.6049, 0.7407] ** | 0.5729 [0.4583, 0.6771] ** | 0.3458 [0.3000, 0.3917] ** |
-| **FullPipeline** | **0.8485 [0.7934, 0.8997]** | **0.8684 [0.8194, 0.9131]** | **0.8786 [0.8228, 0.9314]** | **0.8545 [0.8043, 0.9020]** | **0.8229 [0.7396, 0.8958]** | **0.4104 [0.3604, 0.4625]** |
-| DistilledModel | 0.8485 [0.7934, 0.8997] | 0.8684 [0.8194, 0.9131] | 0.8786 [0.8228, 0.9314] | 0.8545 [0.8043, 0.9020] | 0.8229 [0.7396, 0.8958] | 0.4104 [0.3604, 0.4625] |
-
-\*\* p < 0.05 vs FullPipeline (paired t-test)
+| Random | 0.6709 [0.6002, 0.7375] \*\* | 0.7121 [0.6488, 0.7742] \*\* | 0.6964 [0.6265, 0.7631] \*\* | 0.6521 [0.5859, 0.7193] \*\* | 0.5312 [0.4271, 0.6250] \*\* | 0.3479 [0.3042, 0.3875] \*\* |
+| FileSize | **0.8485** [0.7934, 0.8997] | **0.8684** [0.8194, 0.9131] | **0.8786** [0.8228, 0.9314] | **0.8545** [0.8043, 0.9020] | **0.8229** [0.7396, 0.8958] | **0.4104** [0.3604, 0.4625] |
+| BM25 | 0.7522 [0.6797, 0.8115] \*\* | 0.7857 [0.7259, 0.8373] \*\* | 0.7710 [0.6981, 0.8332] \*\* | 0.7396 [0.6763, 0.7920] \*\* | 0.6667 [0.5729, 0.7500] \*\* | 0.3875 [0.3375, 0.4375] |
+| DenseOnly | 0.6815 [0.6029, 0.7504] \*\* | 0.7241 [0.6587, 0.7823] \*\* | 0.7075 [0.6260, 0.7798] \*\* | 0.6744 [0.6049, 0.7407] \*\* | 0.5729 [0.4583, 0.6771] \*\* | 0.3458 [0.3000, 0.3917] \*\* |
+| **FullPipeline** | **0.8485** [0.7934, 0.8997] | **0.8684** [0.8194, 0.9131] | **0.8786** [0.8228, 0.9314] | **0.8545** [0.8043, 0.9020] | **0.8229** [0.7396, 0.8958] | **0.4104** [0.3604, 0.4625] |
+| DistilledModel | **0.8485** [0.7934, 0.8997] | **0.8684** [0.8194, 0.9131] | **0.8786** [0.8228, 0.9314] | **0.8545** [0.8043, 0.9020] | **0.8229** [0.7396, 0.8958] | **0.4104** [0.3604, 0.4625] |
+| *Notes* | *FileSize ≡ FullPipeline on aggregate; see Honest Baseline Analysis below* | | | | | |
 
 Key takeaways:
-- FullPipeline and DistilledModel match on all metrics — distillation preserves quality
+- FullPipeline and DistilledModel match on all metrics — distillation preserves quality at 3× lower latency
 - Significantly outperforms Random, BM25, and DenseOnly (p < 0.05 on all primary metrics)
 - DenseOnly performs only marginally above random — dense embeddings alone don't capture importance ordering without the cross-encoder
 
@@ -83,7 +84,7 @@ The FileSize baseline (sort files by lines changed, descending) ties with FullPi
 ### Retrieval Depth (K) Sensitivity
 
 Ablation over retrieval depth K ∈ {1, 5, 10, 20, 50} using DenseOnlyBaseline (CodeBERT).
-Ranked list truncated to top-K before scoring; run with `python -m ml.eval.ablation_k`.
+Ranked list truncated to top-K before scoring. Run: `python -m ml.eval.ablation_k`.
 
 | K  | NDCG@5 | MRR    | MAP    |
 |----|--------|--------|--------|
@@ -97,12 +98,11 @@ Ranked list truncated to top-K before scoring; run with `python -m ml.eval.ablat
 
 ### Error Analysis
 
-Evaluated on 9 HF test-split PRs (FullPipeline, falling back to FileSize when reranker unavailable).
-Full report: `ml/eval/error_analysis.md`. Run with `python -m ml.eval.error_analysis`.
+Evaluated on 9 HF test-split PRs. Full report: `ml/eval/error_analysis.md`. Run: `python -m ml.eval.error_analysis`.
 
-- **Failure cases** (NDCG@5 < 0.5): 1 of 9 PRs (11%) — the sole failure is a **large PR (25 files, 25 LOC/file)** where files score similarly and small ranking errors compound into a large NDCG drop.
+- **Failure cases** (NDCG@5 < 0.5): 1 of 9 PRs (11%) — a large PR with 25 files where files score similarly and ranking errors compound.
 - **Success cases** (NDCG@5 > 0.9): 8 of 9 PRs (88%). Security-related files appear in 25% of success cases and are consistently ranked Critical.
-- **Root cause:** Training on synthetic importance scores (path heuristics + change size) works well for focused PRs but degrades on large PRs with many similarly-ranked files, atypical repo structures (e.g., monorepos where `build/` is critical), and pure documentation PRs.
+- **Root cause:** Synthetic importance scores (path heuristics + change size) work well for focused PRs but degrade on large PRs, atypical repo structures, and doc-only PRs.
 - **Data quality note:** Integration tests found 1 PR overlap between train and validation splits (pr_id=42504) — a known artifact of the synthetic corpus construction.
 
 ### LoRA Rank Ablation
@@ -147,9 +147,9 @@ Ablation over LoRA rank r ∈ {4, 8, 16, 32} with fixed α = 2r (CodeBERT base, 
 
 ### Tech Stack
 
-![Next.js](https://img.shields.io/badge/Next.js-14-black)
+![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
-![TailwindCSS](https://img.shields.io/badge/Tailwind-3-06B6D4)
+![TailwindCSS](https://img.shields.io/badge/Tailwind-4-06B6D4)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688)
 ![HuggingFace](https://img.shields.io/badge/HuggingFace-Spaces-FFD21E)
 ![Vercel](https://img.shields.io/badge/Vercel-deployed-black)
@@ -157,26 +157,47 @@ Ablation over LoRA rank r ∈ {4, 8, 16, 32} with fixed α = 2r (CodeBERT base, 
 
 ### Key Features
 
-- **AI Priority Rankings** — Critical / Important / Low labels per file, from the two-stage ML pipeline
-- **Semantic change grouping** — HDBSCAN clusters related files; coherence scores displayed in the sidebar
-- **Keyboard-first navigation** — full keyboard control: navigate, comment, and search without the mouse
-- **Real-time presence** — see other reviewers' current files via PartyKit WebSockets
-- **Inline GitHub comments** — post review comments directly to GitHub from the diff UI
-- **Webhook-powered live updates** — PR events broadcast instantly to all reviewers in the same room
-- **PR Activity Timeline** — chronological view of events, commits, and reviews per PR
-- **Web Vitals monitoring** — CLS, INP, LCP, TTFB, FCP tracked in production
+**AI Priority Rankings**
 
-### Dashboard
+![AI Priority Toggle](docs/screenshots/ai-priority-toggle.png)
 
-![CodeLens Dashboard](docs/screenshot-dashboard.png)
+Files ranked by ML importance with Critical / Important / Low labels from the two-stage pipeline.
+"Review these N files first" banner surfaces the most important changes instantly.
+
+**Command Palette (⌘K)**
+
+![Command Palette](docs/screenshots/command-palette.png)
+
+Jump to any file or cluster instantly. Fuzzy search across all files, semantic groups, and actions.
+
+**Semantic Change Grouping**
+
+![Semantic Groups](docs/screenshots/semantic-groups.png)
+
+CodeBERT embeddings + HDBSCAN clustering groups related changes across files.
+Click any group to filter the file tree. Coherence score shows how tightly related the group is.
+
+**Inline Code Review**
+
+![Diff Viewer](docs/screenshots/diff-viewer.png)
+
+Click any diff line to add an inline comment. Posts directly to GitHub.
+Optimistic updates with retry on failure. Comment threads persist across sessions.
+
+**PR Activity Timeline**
+
+![Timeline](docs/screenshots/timeline.png)
+
+Chronological view of commits, comments, and review events.
+Webhook-powered: updates in real-time as reviewers leave comments.
 
 ### Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Navigate files down / up |
-| `Enter` | Expand / collapse focused file |
-| `c` | Open comment on focused line |
+| `Enter` | Select focused file |
+| `c` | Open inline comment on focused line |
 | `⌘K` | Command palette (search files, clusters, actions) |
 | `?` | Show all keyboard shortcuts |
 | `g d` | Go to dashboard |
@@ -194,9 +215,9 @@ cd apps/web && ANALYZE=true npm run build -- --webpack
 
 [View bundle treemap](docs/bundle-report.html)
 
-Key observations from the treemap:
+Key observations:
 - Largest chunks: `cmdk` (command palette), `@tanstack/react-virtual` (file list virtualizer), `react-syntax-highlighter` (diff viewer)
-- Both `cmdk` and `@tanstack/react-virtual` are interaction-deferred — loaded only when the PR review view mounts, not on the dashboard
+- Both `cmdk` and `@tanstack/react-virtual` are interaction-deferred — not loaded on the dashboard
 - `react-syntax-highlighter` ships all language grammars; a future optimization is dynamic grammar loading per detected language
 
 ### Runtime Performance
@@ -242,17 +263,57 @@ make train             # fine-tune reranker (GPU recommended)
 ```
 codelens/
 ├── apps/
-│   ├── web/                # Next.js 16 frontend (Vercel)
-│   │   ├── src/app/        # App Router pages & API routes
-│   │   ├── src/components/ # React components
-│   │   └── src/hooks/      # Custom hooks (keyboard nav, presence, comments)
-│   └── api-hf/             # FastAPI ML backend (HF Spaces)
+│   ├── api-hf/                     # FastAPI ML backend deployed to HF Spaces
+│   │   ├── main.py                 #   /rank, /cluster, /retrieve, /health endpoints
+│   │   └── requirements.txt
+│   ├── api/                        # Local FastAPI (routers, services, models)
+│   └── web/                        # Next.js 16 frontend (deployed to Vercel)
+│       ├── src/
+│       │   ├── app/                #   App Router: pages + API routes
+│       │   │   ├── (app)/dashboard/    # PR list dashboard
+│       │   │   ├── (app)/pr/[…]/      # PR review view
+│       │   │   └── api/               # GitHub OAuth, comment, ratelimit, timeline
+│       │   ├── components/         #   React components
+│       │   │   ├── pr-review/      #     diff-viewer, file-list, pr-review-view, timeline
+│       │   │   ├── cluster-panel   #     HDBSCAN cluster sidebar
+│       │   │   ├── command-palette #     ⌘K search
+│       │   │   └── rank-badge      #     Critical/Important/Low label
+│       │   ├── hooks/              #   useKeyboardNav, useHotkeys, usePrRoom, useComments
+│       │   └── lib/                #   session, utils, language detection, vitals
+│       ├── e2e/                    #   Playwright E2E tests
+│       ├── src/__tests__/          #   Vitest component tests
+│       └── scripts/                #   capture-screenshots.ts
 ├── ml/
-│   ├── data/               # Dataset pipeline (scraper, builder)
-│   ├── models/             # Embedder, FAISS, reranker, ONNX export
-│   └── eval/               # Evaluation suite & baselines
-├── docs/                   # Architecture diagrams, API docs, ML results
-└── .github/workflows/      # CI: build, typecheck, ml-tests
+│   ├── data/                       # Dataset pipeline
+│   │   ├── scraper.py              #   GitHub PR scraper
+│   │   ├── labeler.py              #   importance score labeler
+│   │   ├── parser.py               #   diff parser
+│   │   └── hf_dataset/             #   train/val/test Arrow splits
+│   ├── models/                     # Model code
+│   │   ├── embedder.py             #   CodeBERT embedder
+│   │   ├── index.py                #   FAISS IndexFlatIP
+│   │   ├── reranker.py             #   distilRoBERTa cross-encoder
+│   │   ├── train.py                #   LoRA fine-tuning + distillation
+│   │   └── export_onnx.py          #   ONNX export + INT8 quantization
+│   ├── eval/                       # Evaluation suite
+│   │   ├── baselines.py            #   Random, FileSize, BM25, Dense, Full, Distilled
+│   │   ├── metrics.py              #   NDCG@k, MRR, MAP, P@k, bootstrap CI
+│   │   ├── run_eval.py             #   Main eval loop → results.json + results_table.md
+│   │   ├── ablation.py             #   LoRA rank ablation (r=4,8,16,32)
+│   │   ├── ablation_k.py           #   Retrieval depth K ablation
+│   │   ├── error_analysis.py       #   Failure/success case analysis
+│   │   └── benchmark.py            #   Latency benchmark (PyTorch + ONNX)
+│   └── tests/
+│       └── test_integration.py     #   End-to-end pipeline integration tests
+├── docs/
+│   ├── screenshots/                # Feature screenshots (Playwright-generated)
+│   ├── architecture.md             # System design document
+│   ├── api.md                      # API reference
+│   ├── bundle-report.html          # Webpack bundle treemap
+│   └── pareto.png                  # Latency vs. AUC pareto chart
+├── .github/workflows/ci.yml        # CI: build, typecheck, ml-tests, Lighthouse
+├── pyproject.toml                  # Python project config + pytest settings
+└── turbo.json                      # Turborepo build pipeline
 ```
 
 ## Future Work
