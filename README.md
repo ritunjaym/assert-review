@@ -80,6 +80,31 @@ The FileSize baseline (sort files by lines changed, descending) ties with FullPi
 
 **What this means:** FileSize is a strong, free baseline. The ML pipeline earns its cost on the tail of cases that matter most — subtle high-risk changes — which pure heuristics miss by design. In production, we use both: FileSize as a fast pre-filter and the cross-encoder for final ranking.
 
+### Retrieval Depth (K) Sensitivity
+
+Ablation over retrieval depth K ∈ {1, 5, 10, 20, 50} using DenseOnlyBaseline (CodeBERT).
+Ranked list truncated to top-K before scoring; run with `python -m ml.eval.ablation_k`.
+
+| K  | NDCG@5 | MRR    | MAP    |
+|----|--------|--------|--------|
+| 1  | 0.2546 | 0.4444 | 0.1984 |
+| 5  | 0.5080 | 0.5370 | 0.3949 |
+| 10 | 0.5080 | 0.5481 | 0.4571 |
+| 20 | 0.5080 | 0.5574 | 0.4984 |
+| 50 | 0.5080 | 0.5574 | 0.5072 |
+
+**Finding:** NDCG@5 plateaus at K≈10 — retrieving more than 10 candidates yields <1 pp gain. Production uses K=20 as a conservative margin above the plateau. See `ml/eval/ablation_k_results.md`.
+
+### Error Analysis
+
+Evaluated on 9 HF test-split PRs (FullPipeline, falling back to FileSize when reranker unavailable).
+Full report: `ml/eval/error_analysis.md`. Run with `python -m ml.eval.error_analysis`.
+
+- **Failure cases** (NDCG@5 < 0.5): 1 of 9 PRs (11%) — the sole failure is a **large PR (25 files, 25 LOC/file)** where files score similarly and small ranking errors compound into a large NDCG drop.
+- **Success cases** (NDCG@5 > 0.9): 8 of 9 PRs (88%). Security-related files appear in 25% of success cases and are consistently ranked Critical.
+- **Root cause:** Training on synthetic importance scores (path heuristics + change size) works well for focused PRs but degrades on large PRs with many similarly-ranked files, atypical repo structures (e.g., monorepos where `build/` is critical), and pure documentation PRs.
+- **Data quality note:** Integration tests found 1 PR overlap between train and validation splits (pr_id=42504) — a known artifact of the synthetic corpus construction.
+
 ### LoRA Rank Ablation
 
 Ablation over LoRA rank r ∈ {4, 8, 16, 32} with fixed α = 2r (CodeBERT base, batch=1, seq_len=128):
