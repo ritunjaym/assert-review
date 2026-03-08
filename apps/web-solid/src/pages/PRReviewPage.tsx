@@ -2,6 +2,7 @@ import { createSignal, createEffect, createMemo, Show, onCleanup } from 'solid-j
 import { useParams, useNavigate } from '@tanstack/solid-router'
 import { AuthGuard } from '@/components/AuthGuard'
 import { Nav } from '@/components/Nav'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { FileList } from '@/components/pr-review/FileList'
 import { DiffViewer } from '@/components/pr-review/DiffViewer'
 import { ClusterPanel } from '@/components/pr-review/ClusterPanel'
@@ -40,6 +41,7 @@ export function PRReviewPage() {
   const [commentOpen, setCommentOpen] = createSignal(false)
   const [bannerDismissed, setBannerDismissed] = createSignal(false)
   const [activeTab, setActiveTab] = createSignal<'clusters' | 'timeline'>('clusters')
+  const [showMobileFiles, setShowMobileFiles] = createSignal(false)
 
   // Run ML ranking when files load
   createEffect(async () => {
@@ -96,6 +98,11 @@ export function PRReviewPage() {
     rankedFiles().find(r => r.filename === selectedFile()) ?? null
   )
 
+  function handleMobileFileSelect(filename: string) {
+    setSelectedFile(filename)
+    setShowMobileFiles(false)
+  }
+
   // Keyboard shortcuts
   createEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -148,148 +155,183 @@ export function PRReviewPage() {
   return (
     <AuthGuard>
       <Nav />
-      <div class="flex flex-col h-[calc(100vh-3.5rem)]">
-        {/* PR header */}
-        <div class="border-b border-slate-800 px-4 py-3 bg-slate-900/50 flex items-center gap-3">
-          <Show when={pr.data}>
-            <div class="flex-1 min-w-0">
-              <h1 class="text-sm font-medium text-white truncate">{pr.data?.title}</h1>
-              <p class="text-xs text-slate-500">
-                #{pr.data?.number} · {params.owner}/{params.repo}
-              </p>
-            </div>
-          </Show>
-          <PresenceBar prId={`${params.owner}/${params.repo}/${params.number}`} />
-          <button
-            class={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-              aiPriority()
-                ? 'bg-blue-600/20 border-blue-500 text-blue-300'
-                : 'border-slate-700 text-slate-400 hover:border-slate-600'
-            }`}
-            onClick={() => setAiPriority(p => !p)}
-          >
-            {aiPriority() ? '✦ AI Priority' : 'Default Order'}
-          </button>
-        </div>
-
-        {/* Critical files banner */}
-        <Show when={aiPriority() && criticalFiles().length > 0 && !bannerDismissed()}>
-          <div class="bg-blue-950/50 border-b border-blue-800 px-4 py-2 flex items-center gap-2">
-            <span class="text-blue-300 text-xs">
-              ✦ AI recommends reviewing these {criticalFiles().length} file(s) first:{' '}
-              <span class="font-medium">{criticalFiles().slice(0, 3).join(', ')}</span>
-              {criticalFiles().length > 3 && ` +${criticalFiles().length - 3} more`}
-            </span>
-            <button
-              class="ml-auto text-blue-500 hover:text-blue-300 text-xs"
-              onClick={() => setBannerDismissed(true)}
-            >✕</button>
-          </div>
-        </Show>
-
-        {/* Main 3-column layout */}
-        <div class="flex flex-1 min-h-0">
-          {/* Left: file list */}
-          <div class="w-72 border-r border-slate-800 flex flex-col min-h-0 shrink-0">
-            <div class="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
-              <span class="text-xs text-slate-400">
-                {files.data?.length ?? 0} files
-              </span>
-              <Show when={processingMs() !== null}>
-                <span class="text-xs text-slate-600">
-                  AI ranked in {processingMs()! < 50 ? '< 50' : processingMs()}ms
-                </span>
-              </Show>
-            </div>
-            <Show when={files.isLoading}>
-              <div class="p-3 space-y-1">
-                {[...Array(8)].map(() => (
-                  <div class="h-9 bg-slate-800 rounded animate-pulse" />
-                ))}
+      <ErrorBoundary>
+        <div class="flex flex-col h-[calc(100vh-3.5rem)]">
+          {/* PR header */}
+          <div class="border-b border-slate-800 px-4 py-3 bg-slate-900/50 flex items-center gap-3">
+            <Show when={pr.data}>
+              <div class="flex-1 min-w-0">
+                <h1 class="text-sm font-medium text-white truncate">{pr.data?.title}</h1>
+                <p class="text-xs text-slate-500">
+                  #{pr.data?.number} · {params.owner}/{params.repo}
+                </p>
               </div>
             </Show>
-            <Show when={files.data}>
-              <FileList
-                files={files.data!}
-                rankedFiles={rankedFiles()}
-                selectedFile={selectedFile()}
-                focusedFile={focusedFile()}
-                selectedCluster={selectedCluster()}
-                clusterFileMap={clusterFileMap()}
-                aiPriority={aiPriority()}
-                onSelectFile={setSelectedFile}
-              />
-            </Show>
+            <PresenceBar prId={`${params.owner}/${params.repo}/${params.number}`} />
+            <button
+              class={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                aiPriority()
+                  ? 'bg-blue-600/20 border-blue-500 text-blue-300'
+                  : 'border-slate-700 text-slate-400 hover:border-slate-600'
+              }`}
+              onClick={() => setAiPriority(p => !p)}
+            >
+              {aiPriority() ? '✦ AI Priority' : 'Default Order'}
+            </button>
           </div>
 
-          {/* Center: diff viewer */}
-          <div class="flex-1 min-w-0 min-h-0 overflow-hidden">
-            <DiffViewer
-              file={selectedFileData()}
-              rank={selectedFileRank()}
-              prId={params.number}
-              owner={params.owner}
-              repo={params.repo}
-              commentOpen={commentOpen()}
-              onCommentClose={() => setCommentOpen(false)}
-            />
-          </div>
-
-          {/* Right: tabbed panel (clusters / timeline) */}
-          <div class="w-56 border-l border-slate-800 flex flex-col min-h-0 shrink-0 hidden lg:flex">
-            {/* Tab buttons */}
-            <div class="flex border-b border-slate-800">
+          {/* Critical files banner */}
+          <Show when={aiPriority() && criticalFiles().length > 0 && !bannerDismissed()}>
+            <div class="bg-blue-950/50 border-b border-blue-800 px-4 py-2 flex items-center gap-2">
+              <span class="text-blue-300 text-xs">
+                ✦ AI recommends reviewing these {criticalFiles().length} file(s) first:{' '}
+                <span class="font-medium">{criticalFiles().slice(0, 3).join(', ')}</span>
+                {criticalFiles().length > 3 && ` +${criticalFiles().length - 3} more`}
+              </span>
               <button
-                class={`flex-1 text-xs py-2 transition-colors ${
-                  activeTab() === 'clusters'
-                    ? 'text-white border-b-2 border-blue-500'
-                    : 'text-slate-500 hover:text-slate-300'
-                }`}
-                onClick={() => setActiveTab('clusters')}
-              >
-                Groups
-              </button>
-              <button
-                class={`flex-1 text-xs py-2 transition-colors ${
-                  activeTab() === 'timeline'
-                    ? 'text-white border-b-2 border-blue-500'
-                    : 'text-slate-500 hover:text-slate-300'
-                }`}
-                onClick={() => setActiveTab('timeline')}
-              >
-                Timeline
-              </button>
+                class="ml-auto text-blue-500 hover:text-blue-300 text-xs"
+                onClick={() => setBannerDismissed(true)}
+              >✕</button>
             </div>
-            <div class="flex-1 overflow-y-auto">
-              <Show when={activeTab() === 'clusters'}>
-                <ClusterPanel
-                  clusters={clusters()}
+          </Show>
+
+          {/* Main 3-column layout */}
+          <div class="flex flex-1 min-h-0">
+            {/* Left: file list — hidden on mobile */}
+            <div class="w-72 border-r border-slate-800 flex-col min-h-0 shrink-0 hidden md:flex">
+              <div class="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
+                <span class="text-xs text-slate-400">
+                  {files.data?.length ?? 0} files
+                </span>
+                <Show when={processingMs() !== null}>
+                  <span class="text-xs text-slate-600">
+                    AI ranked in {processingMs()! < 50 ? '< 50' : processingMs()}ms
+                  </span>
+                </Show>
+              </div>
+              <Show when={files.isLoading}>
+                <div class="p-3 space-y-1">
+                  {[...Array(8)].map(() => (
+                    <div class="h-9 bg-slate-800 rounded animate-pulse" />
+                  ))}
+                </div>
+              </Show>
+              <Show when={files.data}>
+                <FileList
+                  files={files.data!}
+                  rankedFiles={rankedFiles()}
+                  selectedFile={selectedFile()}
+                  focusedFile={focusedFile()}
                   selectedCluster={selectedCluster()}
-                  onSelectCluster={setSelectedCluster}
-                  isLoading={mlLoading()}
-                />
-              </Show>
-              <Show when={activeTab() === 'timeline'}>
-                <Timeline
-                  owner={params.owner}
-                  repo={params.repo}
-                  number={parseInt(params.number)}
+                  clusterFileMap={clusterFileMap()}
+                  aiPriority={aiPriority()}
+                  onSelectFile={setSelectedFile}
                 />
               </Show>
             </div>
+
+            {/* Center: diff viewer */}
+            <div class="flex-1 min-w-0 min-h-0 overflow-hidden">
+              <DiffViewer
+                file={selectedFileData()}
+                rank={selectedFileRank()}
+                prId={params.number}
+                owner={params.owner}
+                repo={params.repo}
+                commentOpen={commentOpen()}
+                onCommentClose={() => setCommentOpen(false)}
+              />
+            </div>
+
+            {/* Right: tabbed panel (clusters / timeline) */}
+            <div class="w-56 border-l border-slate-800 flex flex-col min-h-0 shrink-0 hidden lg:flex">
+              <div class="flex border-b border-slate-800">
+                <button
+                  class={`flex-1 text-xs py-2 transition-colors ${
+                    activeTab() === 'clusters'
+                      ? 'text-white border-b-2 border-blue-500'
+                      : 'text-slate-500 hover:text-slate-300'
+                  }`}
+                  onClick={() => setActiveTab('clusters')}
+                >
+                  Groups
+                </button>
+                <button
+                  class={`flex-1 text-xs py-2 transition-colors ${
+                    activeTab() === 'timeline'
+                      ? 'text-white border-b-2 border-blue-500'
+                      : 'text-slate-500 hover:text-slate-300'
+                  }`}
+                  onClick={() => setActiveTab('timeline')}
+                >
+                  Timeline
+                </button>
+              </div>
+              <div class="flex-1 overflow-y-auto">
+                <Show when={activeTab() === 'clusters'}>
+                  <ClusterPanel
+                    clusters={clusters()}
+                    selectedCluster={selectedCluster()}
+                    onSelectCluster={setSelectedCluster}
+                    isLoading={mlLoading()}
+                  />
+                </Show>
+                <Show when={activeTab() === 'timeline'}>
+                  <Timeline
+                    owner={params.owner}
+                    repo={params.repo}
+                    number={parseInt(params.number)}
+                  />
+                </Show>
+              </div>
+            </div>
+          </div>
+
+          {/* Mobile floating file button */}
+          <button
+            class="fixed bottom-12 left-4 z-40 md:hidden bg-slate-800 border border-slate-600 text-slate-200 text-sm px-3 py-2 rounded-full shadow-lg"
+            onClick={() => setShowMobileFiles(true)}
+          >
+            📂 Files
+          </button>
+
+          {/* Mobile file bottom sheet */}
+          <Show when={showMobileFiles()}>
+            <div
+              class="fixed inset-0 z-50 md:hidden bg-black/50"
+              onClick={() => setShowMobileFiles(false)}
+            />
+            <div class="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-slate-900 border-t border-slate-700 max-h-[70vh] overflow-y-auto rounded-t-xl">
+              <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800 sticky top-0 bg-slate-900">
+                <span class="text-sm font-medium text-white">Files ({files.data?.length ?? 0})</span>
+                <button class="text-slate-500 hover:text-white" onClick={() => setShowMobileFiles(false)}>✕</button>
+              </div>
+              <Show when={files.data}>
+                <FileList
+                  files={files.data!}
+                  rankedFiles={rankedFiles()}
+                  selectedFile={selectedFile()}
+                  focusedFile={focusedFile()}
+                  selectedCluster={selectedCluster()}
+                  clusterFileMap={clusterFileMap()}
+                  aiPriority={aiPriority()}
+                  onSelectFile={handleMobileFileSelect}
+                />
+              </Show>
+            </div>
+          </Show>
+
+          {/* Bottom keyboard hints */}
+          <div class="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/90 backdrop-blur border-t border-slate-800 px-4 py-1.5 gap-4 text-xs text-slate-600 hidden md:flex">
+            <span><kbd class="bg-slate-800 px-1 rounded font-mono">j</kbd>/<kbd class="bg-slate-800 px-1 rounded font-mono">k</kbd> navigate</span>
+            <span><kbd class="bg-slate-800 px-1 rounded font-mono">c</kbd> comment</span>
+            <span><kbd class="bg-slate-800 px-1 rounded font-mono">o</kbd> toggle AI</span>
+            <span><kbd class="bg-slate-800 px-1 rounded font-mono">⌘K</kbd> search</span>
+            <span><kbd class="bg-slate-800 px-1 rounded font-mono">?</kbd> shortcuts</span>
+            <span><kbd class="bg-slate-800 px-1 rounded font-mono">gd</kbd> dashboard</span>
           </div>
         </div>
-
-        {/* Bottom keyboard hints */}
-        <div class="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/90 backdrop-blur border-t border-slate-800 px-4 py-1.5 gap-4 text-xs text-slate-600 hidden md:flex">
-          <span><kbd class="bg-slate-800 px-1 rounded font-mono">j</kbd>/<kbd class="bg-slate-800 px-1 rounded font-mono">k</kbd> navigate</span>
-          <span><kbd class="bg-slate-800 px-1 rounded font-mono">c</kbd> comment</span>
-          <span><kbd class="bg-slate-800 px-1 rounded font-mono">o</kbd> toggle AI</span>
-          <span><kbd class="bg-slate-800 px-1 rounded font-mono">⌘K</kbd> search</span>
-          <span><kbd class="bg-slate-800 px-1 rounded font-mono">?</kbd> shortcuts</span>
-          <span><kbd class="bg-slate-800 px-1 rounded font-mono">gd</kbd> dashboard</span>
-        </div>
-      </div>
+      </ErrorBoundary>
 
       <CommandPalette
         open={showPalette()}
