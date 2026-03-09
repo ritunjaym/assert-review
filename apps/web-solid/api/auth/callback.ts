@@ -13,15 +13,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       code,
     }),
   })
-  const { access_token } = await tokenRes.json() as { access_token: string }
-  if (!access_token) return res.redirect('/login?error=no_token')
+  const tokenData = await tokenRes.json() as { access_token: string; error?: string; error_description?: string }
+  console.log('GitHub token response:', JSON.stringify(tokenData))
+  if (!tokenData.access_token) return res.redirect(`/login?error=${tokenData.error ?? 'no_token'}`)
 
   const userRes = await fetch('https://api.github.com/user', {
-    headers: { Authorization: `Bearer ${access_token}` }
+    headers: { Authorization: `Bearer ${tokenData.access_token}` }
   })
   const user = await userRes.json()
 
-  const session = Buffer.from(JSON.stringify({ accessToken: access_token, user })).toString('base64')
+  const session = Buffer.from(JSON.stringify({ accessToken: tokenData.access_token, user })).toString('base64')
   res.setHeader('Set-Cookie', `gh_session=${session}; HttpOnly; Secure; SameSite=Lax; Max-Age=${60 * 60 * 24 * 7}; Path=/`)
   res.redirect('/dashboard')
 }

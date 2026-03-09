@@ -25,5 +25,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const rlr = ghRes.headers.get('x-ratelimit-reset')
   if (rlr) res.setHeader('x-ratelimit-reset', rlr)
 
-  res.status(ghRes.status).json(await ghRes.json())
+  if (ghRes.status === 304 || ghRes.status === 204) {
+    return res.status(ghRes.status).end()
+  }
+  const text = await ghRes.text()
+  try {
+    res.status(ghRes.status).json(JSON.parse(text))
+  } catch {
+    res.status(ghRes.status).send(text)
+  }
 }
