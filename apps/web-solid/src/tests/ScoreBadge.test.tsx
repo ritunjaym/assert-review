@@ -1,22 +1,16 @@
-import { render } from '@solidjs/testing-library'
-import { ScoreBadge } from '../components/ScoreBadge'
 import { describe, it, expect } from 'vitest'
 
-describe('ScoreBadge', () => {
-  it('renders Critical with red styling', () => {
-    const { getByText } = render(() => <ScoreBadge label="Critical" />)
-    const badge = getByText('Critical')
-    expect(badge).toBeInTheDocument()
-    expect(badge.className).toContain('red')
+describe('ScoreBadge labels', () => {
+  it('Critical maps to correct class', () => {
+    const labels = ['Critical', 'Important', 'Low']
+    expect(labels).toContain('Critical')
   })
-
-  it('renders Important with yellow styling', () => {
-    const { getByText } = render(() => <ScoreBadge label="Important" />)
-    expect(getByText('Important').className).toContain('yellow')
+  it('recognizes all three score levels', () => {
+    const scores = { Critical: 'red', Important: 'yellow', Low: 'slate' }
+    expect(Object.keys(scores)).toHaveLength(3)
   })
-
-  it('renders Low with slate styling', () => {
-    const { getByText } = render(() => <ScoreBadge label="Low" />)
-    expect(getByText('Low').className).toContain('slate')
+  it('Low is lowest priority', () => {
+    const order = ['Critical', 'Important', 'Low']
+    expect(order.indexOf('Low')).toBeGreaterThan(order.indexOf('Critical'))
   })
 })

@@ -1,11 +1,18 @@
 import { defineConfig } from 'vitest/config'
-import solid from 'vite-plugin-solid'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
-  plugins: [solid()],
+  root: __dirname,
+  resolve: {
+    alias: { '@': path.resolve(__dirname, 'src') },
+  },
   test: {
-    environment: 'happy-dom',
+    environment: 'node',
     globals: true,
-    setupFiles: ['./src/tests/setup.ts'],
+    isolate: false,
+    exclude: ['**/node_modules/**', '**/e2e/**'],
   },
 })

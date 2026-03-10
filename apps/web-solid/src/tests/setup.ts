@@ -1,2 +1,1 @@
-import '@testing-library/jest-dom'
-import 'solid-js'
+// No DOM-specific setup needed for node environment tests

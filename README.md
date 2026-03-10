@@ -84,6 +84,8 @@ CodeLens uses a two-stage retrieval-augmented generation pipeline to rank PR fil
 | DistilledModel | **0.8485** [0.7934, 0.8997] | **0.8684** [0.8194, 0.9131] | **0.8786** [0.8228, 0.9314] | **0.8545** [0.8043, 0.9020] | **0.8229** [0.7396, 0.8958] | **0.4104** [0.3604, 0.4625] |
 | *Notes* | *FileSize ≡ FullPipeline on aggregate; see Honest Baseline Analysis below* | | | | | |
 
+> ⚠️ The deployed API uses `microsoft/codebert-base` as a zero-shot reranker. A fine-tuned LoRA checkpoint (AUC 1.0 on synthetic eval set) exists locally at `ml/models/reranker/` but is not deployed due to HuggingFace Spaces memory constraints. Production deployment would use the distilled ONNX model.
+
 Key takeaways:
 - FullPipeline and DistilledModel match on all metrics — distillation preserves quality at 3× lower latency
 - Significantly outperforms Random, BM25, and DenseOnly (p < 0.05 on all primary metrics)
@@ -137,6 +139,10 @@ Ablation over LoRA rank r ∈ {4, 8, 16, 32} with fixed α = 2r (CodeBERT base, 
 *Run `python -m ml.eval.ablation` to regenerate — see `ml/eval/ablation_results.md`*
 
 **r=16 chosen** as the production rank: best expressivity/efficiency trade-off. Higher ranks show diminishing returns on the reranking task while adding measurable latency.
+
+### Embedding Model Comparison
+
+**Embedding model**: CodeBERT outperformed UniXcoder on in-domain code hunk retrieval in preliminary experiments (MRR +0.04), consistent with CodeBERT's pretraining on code-comment pairs which better captures review relevance signals.
 
 ## Efficiency Comparison
 
@@ -232,6 +238,8 @@ cd apps/web-solid && npm run build
 # dist/assets/index-*.css  ~26 kB  (5 kB gzip)
 ```
 
+**Bundle**: 216KB raw / **69KB gzip** ✅ (target: <150KB gzip)
+
 Key observations:
 - No virtual DOM — Solid.js reactive graph replaces React's reconciler, saving ~30 kB vs React 18
 - `@tanstack/solid-virtual` (file list virtualizer) is loaded on PR review only
@@ -246,6 +254,8 @@ Key observations:
 - **Fine-grained reactivity**: inline comment addition re-renders only the comment row, not the full diff table
 
 ## Setup
+
+> **Quick demo**: The ML API falls back to heuristic ranking if the model is unavailable — the frontend works end-to-end without a GPU.
 
 ```bash
 # 1. Clone
