@@ -8,15 +8,21 @@ interface Presence {
   color: string
 }
 
+export interface GithubEventMessage {
+  event: string
+  payload: unknown
+}
+
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#ef4444']
 
 export function usePartyKit(prId: string) {
   const [connected, setConnected] = createSignal(false)
   const [presence, setPresence] = createSignal<Presence[]>([])
+  const [lastGithubEvent, setLastGithubEvent] = createSignal<GithubEventMessage | null>(null)
   let ws: WebSocket | null = null
 
   const PARTYKIT_HOST = import.meta.env.VITE_PARTYKIT_HOST
-  if (!PARTYKIT_HOST) return { connected, presence }
+  if (!PARTYKIT_HOST) return { connected, presence, lastGithubEvent }
 
   const roomId = `pr-${prId}`.replace(/[^a-z0-9-]/gi, '-').toLowerCase()
   const url = `wss://${PARTYKIT_HOST}/parties/main/${roomId}`
@@ -39,8 +45,9 @@ export function usePartyKit(prId: string) {
 
     ws.onmessage = (e) => {
       try {
-        const msg = JSON.parse(e.data)
+        const msg = JSON.parse(e.data) as { type: string; users?: Presence[]; event?: string; payload?: unknown }
         if (msg.type === 'presence_update') setPresence(msg.users ?? [])
+        if (msg.type === 'github_event') setLastGithubEvent({ event: msg.event ?? '', payload: msg.payload })
       } catch {}
     }
 
@@ -55,5 +62,5 @@ export function usePartyKit(prId: string) {
   connect()
   onCleanup(() => ws?.close())
 
-  return { connected, presence }
+  return { connected, presence, lastGithubEvent }
 }

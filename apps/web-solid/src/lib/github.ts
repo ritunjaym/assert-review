@@ -56,6 +56,22 @@ export interface PRFile {
   patch?: string
 }
 
+export interface PRReview {
+  id: number
+  user: { login: string; avatar_url: string }
+  state: string
+  body: string
+  submitted_at: string
+}
+
+export interface GitHubEvent {
+  id: string
+  event: string
+  actor: { login: string; avatar_url: string }
+  created_at: string
+  payload: unknown
+}
+
 export const github = {
   async getUser() {
     return githubFetch<{ login: string; name: string; avatar_url: string }>('/user')
@@ -75,10 +91,10 @@ export const github = {
     return githubFetch<PRFile[]>(`/repos/${owner}/${repo}/pulls/${number}/files?per_page=100`)
   },
   async getPRReviews(owner: string, repo: string, number: number) {
-    return githubFetch<any[]>(`/repos/${owner}/${repo}/pulls/${number}/reviews`)
+    return githubFetch<PRReview[]>(`/repos/${owner}/${repo}/pulls/${number}/reviews`)
   },
   async getEvents(owner: string, repo: string, number: number) {
-    return githubFetch<any[]>(`/repos/${owner}/${repo}/issues/${number}/events?per_page=30`)
+    return githubFetch<GitHubEvent[]>(`/repos/${owner}/${repo}/issues/${number}/events?per_page=30`)
   },
   async postComment(owner: string, repo: string, number: number, body: string, path: string, line: number, commitId: string) {
     const endpoint = `repos/${owner}/${repo}/pulls/${number}/comments`

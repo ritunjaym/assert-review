@@ -1,9 +1,11 @@
 import { createSignal, For, Show } from 'solid-js'
 import { useNavigate } from '@tanstack/solid-router'
+import { useQueryClient } from '@tanstack/solid-query'
 import { AuthGuard } from '@/components/AuthGuard'
 import { Nav } from '@/components/Nav'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useRepos, usePRs } from '@/hooks/queries'
+import { github } from '@/lib/github'
 import { formatDistanceToNow } from 'date-fns'
 
 function PRSkeleton() {
@@ -27,12 +29,17 @@ export function DashboardPage() {
     () => selectedRepo().split('/')[1] ?? ''
   )
 
+  const queryClient = useQueryClient()
   const prefetched = new Set<string>()
   function handlePRHover(owner: string, repo: string, number: number) {
     const key = `${owner}/${repo}/${number}`
     if (!prefetched.has(key)) {
       prefetched.add(key)
-      fetch(`/api/github/repos/${owner}/${repo}/pulls/${number}/files?per_page=100`)
+      void queryClient.prefetchQuery({
+        queryKey: ['prFiles', owner, repo, number],
+        queryFn: () => github.getPRFiles(owner, repo, number),
+        staleTime: 60_000,
+      })
     }
   }
 

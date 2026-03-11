@@ -20,6 +20,9 @@ from __future__ import annotations
 import math
 import random
 import re
+import structlog
+
+log = structlog.get_logger()
 
 
 def _sigmoid(x: float) -> float:
@@ -106,7 +109,7 @@ class BM25Baseline:
         try:
             from rank_bm25 import BM25Okapi
         except ImportError:
-            print("BM25Baseline: rank_bm25 not installed, falling back to FileSize")
+            log.warning("BM25Baseline: rank_bm25 not installed, falling back to FileSize")
             return FileSizeBaseline().rank(files)
 
         corpus = [
@@ -176,7 +179,7 @@ class DenseOnlyBaseline:
             self._anchor = np.mean(anchor_embs, axis=0)
             self._anchor = self._anchor / (np.linalg.norm(self._anchor) + 1e-8)
         except Exception as e:
-            print(f"DenseOnlyBaseline: could not load CodeBERT: {e}")
+            log.warning("DenseOnlyBaseline: could not load CodeBERT", error=str(e))
 
     def _embed(self, text: str) -> "np.ndarray":
         import numpy as np
@@ -252,9 +255,9 @@ class FullPipelineBaseline:
                 "ritunjaym/prism-reranker", cache_dir="/tmp/hf-cache"
             )
             self._model.eval()
-            print("FullPipelineBaseline: prism-reranker loaded")
+            log.info("FullPipelineBaseline: prism-reranker loaded")
         except Exception as e:
-            print(f"FullPipelineBaseline: could not load reranker: {e}")
+            log.warning("FullPipelineBaseline: could not load reranker", error=str(e))
 
     def rank(self, files: list[dict]) -> list[dict]:
         """
@@ -323,7 +326,7 @@ class DistilledModelBaseline:
                 "ritunjaym/prism-reranker", cache_dir="/tmp/hf-cache"
             )
         except Exception as e:
-            print(f"DistilledModelBaseline: tokenizer load failed: {e}")
+            log.warning("DistilledModelBaseline: tokenizer load failed", error=str(e))
             return
 
         # Try ONNX INT8 first
@@ -335,7 +338,7 @@ class DistilledModelBaseline:
             )
             if onnx_path.exists():
                 self._ort_session = ort.InferenceSession(str(onnx_path))
-                print(f"DistilledModelBaseline: ONNX INT8 loaded from {onnx_path}")
+                log.info("DistilledModelBaseline: ONNX INT8 loaded", path=str(onnx_path))
                 return
         except Exception:
             pass
@@ -347,9 +350,9 @@ class DistilledModelBaseline:
                 "ritunjaym/prism-reranker", cache_dir="/tmp/hf-cache"
             )
             self._pt_model.eval()
-            print("DistilledModelBaseline: PyTorch fallback loaded")
+            log.info("DistilledModelBaseline: PyTorch fallback loaded")
         except Exception as e:
-            print(f"DistilledModelBaseline: could not load model: {e}")
+            log.warning("DistilledModelBaseline: could not load model", error=str(e))
 
     def rank(self, files: list[dict]) -> list[dict]:
         """Rank files using the ONNX INT8 distilled reranker (or PyTorch fallback).
