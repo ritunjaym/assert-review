@@ -8,9 +8,12 @@ import time
 from pathlib import Path
 
 import numpy as np
+import structlog
 
 from .embedder import CodeEmbedder
 from .index import PRIndex
+
+log = structlog.get_logger()
 
 FAISS_DIR = Path(__file__).parent / "faiss"
 HF_DATASET_DIR = Path(__file__).parent.parent / "data" / "hf_dataset"
@@ -33,10 +36,10 @@ def load_records() -> list[dict]:
             ds = load_from_disk(str(HF_DATASET_DIR))
             train = ds["train"]
             records = [train[i] for i in range(len(train))]
-            print(f"Loaded {len(records)} records from HF dataset (train split)")
+            log.info("loaded records from HF dataset", n=len(records), split="train")
             return records
         except Exception as e:
-            print(f"Could not load HF dataset: {e}")
+            log.warning("could not load HF dataset, falling back to JSONL", error=str(e))
     
     # Fallback to JSONL
     hunks_path = PROCESSED_DIR / "pr_hunks.jsonl"
@@ -46,7 +49,7 @@ def load_records() -> list[dict]:
             for line in f:
                 if line.strip():
                     records.append(json.loads(line))
-        print(f"Loaded {len(records)} hunk records from JSONL")
+        log.info("loaded hunk records from JSONL", n=len(records))
         return records
     
     files_path = PROCESSED_DIR / "pr_files.jsonl"
@@ -56,7 +59,7 @@ def load_records() -> list[dict]:
             for line in f:
                 if line.strip():
                     records.append(json.loads(line))
-        print(f"Loaded {len(records)} file records from JSONL")
+        log.info("loaded file records from JSONL", n=len(records))
         return records
     
     raise FileNotFoundError(
@@ -75,16 +78,16 @@ def build_index(
     if max_records:
         records = records[:max_records]
     
-    print(f"Building index over {len(records)} records...")
+    log.info("building FAISS index", n_records=len(records))
     
     embedder = CodeEmbedder()
     texts = [format_hunk_text(r) for r in records]
     
-    print("Embedding records...")
+    log.info("embedding records", n=len(texts))
     t0 = time.time()
     embeddings = embedder.embed(texts, batch_size=batch_size)
     embed_time = time.time() - t0
-    print(f"Embedded {len(texts)} records in {embed_time:.1f}s ({len(texts)/embed_time:.1f} records/s)")
+    log.info("embedding complete", n=len(texts), elapsed_s=round(embed_time, 1), records_per_s=round(len(texts)/embed_time, 1))
     
     metadata = []
     for r in records:
@@ -104,7 +107,7 @@ def build_index(
     index.save(save_path)
     
     index_size_mb = Path(save_path).stat().st_size / 1e6 if Path(save_path).exists() else 0
-    print(f"Saved index to {save_path} ({index_size_mb:.1f} MB, {index.size} vectors)")
+    log.info("saved FAISS index", path=save_path, size_mb=round(index_size_mb, 1), n_vectors=index.size)
     
     # Log to W&B if available
     try:

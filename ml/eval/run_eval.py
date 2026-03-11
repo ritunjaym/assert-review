@@ -19,6 +19,10 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Callable
 
+import structlog
+
+log = structlog.get_logger()
+
 EVAL_DIR = Path(__file__).parent
 REPO_ROOT = EVAL_DIR.parent.parent
 
@@ -78,9 +82,9 @@ def _load_test_prs(max_prs: int = 0) -> dict[int, list[dict]]:
             split = ds.get("test") or ds.get("validation") or ds.get("train")
             if split:
                 records = [split[i] for i in range(len(split))]
-                print(f"Loaded {len(records)} records from HF test split")
+                log.info("loaded records from HF test split", n=len(records))
         except Exception as e:
-            print(f"HF dataset load failed ({e}), trying JSONL …")
+            log.warning("HF dataset load failed, trying JSONL", error=str(e))
 
     # 2 — JSONL fallback
     if not records:
@@ -90,7 +94,7 @@ def _load_test_prs(max_prs: int = 0) -> dict[int, list[dict]]:
                 for line in fh:
                     if line.strip():
                         records.append(json.loads(line))
-            print(f"Loaded {len(records)} records from pr_files.jsonl")
+            log.info("loaded records from pr_files.jsonl", n=len(records))
 
     if not records:
         raise FileNotFoundError(
@@ -110,7 +114,7 @@ def _load_test_prs(max_prs: int = 0) -> dict[int, list[dict]]:
         keys = sorted(by_pr)[:max_prs]
         by_pr = {k: by_pr[k] for k in keys}
 
-    print(f"Evaluating on {len(by_pr)} PRs")
+    log.info("evaluating", n_prs=len(by_pr))
     return by_pr
 
 
@@ -172,7 +176,7 @@ def _run_baseline(
             for metric, val in m.items():
                 per_metric[metric].append(val)
         except Exception as e:
-            print(f"  [{name}] PR {pr_id} failed: {e}")
+            log.warning("baseline failed on PR", baseline=name, pr_id=pr_id, error=str(e))
 
     return dict(per_metric)
 
@@ -292,7 +296,7 @@ def run_eval(max_prs: int = 0) -> dict:
     # Run all baselines
     per_baseline: dict[str, dict[str, list[float]]] = {}
     for name, baseline in BASELINES.items():
-        print(f"\nRunning {name} …")
+        log.info("running baseline", name=name)
         per_baseline[name] = _run_baseline(name, baseline, prs)
 
     # Aggregate with bootstrap CI
@@ -331,7 +335,7 @@ def run_eval(max_prs: int = 0) -> dict:
     # Save JSON
     results_json = EVAL_DIR / "results.json"
     results_json.write_text(json.dumps(results, indent=2))
-    print(f"\nSaved {results_json}")
+    log.info("saved results JSON", path=str(results_json))
 
     # Build and save Markdown table
     table_md = "# CodeLens ML Evaluation Results\n\n"
@@ -346,28 +350,17 @@ def run_eval(max_prs: int = 0) -> dict:
 
     results_md = EVAL_DIR / "results_table.md"
     results_md.write_text(table_md)
-    print(f"Saved {results_md}")
+    log.info("saved results markdown", path=str(results_md))
 
-    # Print summary table
-    print("\n" + "=" * 72)
-    print("EVALUATION RESULTS")
-    print("=" * 72)
-    print(f"{'Baseline':<18}  {'NDCG@5':>8}  {'NDCG@10':>9}  {'MRR':>8}  {'MAP':>8}  {'P@1':>8}  {'P@5':>8}")
-    print("-" * 72)
+    # Log summary via structlog
     for name, metrics in aggregated.items():
-        row = f"{name:<18}"
-        for m in _METRICS:
-            mean = metrics.get(m, {}).get("mean", 0.0)
-            row += f"  {mean:>8.4f}"
-        print(row)
-    print("=" * 72)
+        ndcg5 = metrics.get("ndcg@5", {}).get("mean", 0.0)
+        mrr_val = metrics.get("mrr", {}).get("mean", 0.0)
+        log.info("baseline result", baseline=name, ndcg5=round(ndcg5, 4), mrr=round(mrr_val, 4))
 
-    # Print significance summary
-    print("\nStatistical significance vs. FullPipeline (primary: NDCG@5):")
     for name, metrics in significance.items():
         t, p = metrics.get("ndcg@5", (0.0, 1.0))
-        sig = "SIGNIFICANT" if p < 0.05 else "not significant"
-        print(f"  {name:<18}  t={t:+.3f}  p={p:.4f}  → {sig}")
+        log.info("significance vs FullPipeline", baseline=name, t=round(t, 3), p=round(p, 4), significant=p < 0.05)
 
     return results
 

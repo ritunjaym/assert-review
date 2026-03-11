@@ -70,6 +70,10 @@ CodeLens uses a two-stage retrieval-augmented generation pipeline to rank PR fil
 
 **ONNX Export:** Framework-agnostic inference. Deploy the same model on TensorRT, OpenVINO, or CoreML without retraining. Enables edge deployment on reviewer laptops.
 
+**W&B Experiment Tracking:** Training logs loss curves, per-epoch metrics, and hyperparameters to Weights & Biases. Set `WANDB_API_KEY` to enable. Reproducibility enforced via fixed seeds (`seed=42` in `ml/config/train.yaml`) — any run is exactly reproducible from the commit hash.
+
+**Hydra Config Management:** All hyperparameters live in `ml/config/train.yaml`. Override at runtime: `python -m ml.models.train training.batch_size=16 model.lora_r=8`. No hardcoded values in training code.
+
 ## Evaluation Results
 
 **Table 1:** Ranking performance on CodeLens test set (n=96 PRs). 95% bootstrap CIs (1,000 resamples). \*\* p < 0.05 vs FullPipeline (paired t-test). Bold = best per column.

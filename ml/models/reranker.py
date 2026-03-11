@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import structlog
 
+log = structlog.get_logger()
 
 CHECKPOINT_DIR = Path(__file__).parent / "reranker"
 
@@ -59,7 +61,7 @@ class Reranker:
             self._zero_shot = False
         except Exception as e:
             # If loading fails, fall back to zero-shot
-            print(f"Warning: Could not load reranker checkpoint ({e}). Using zero-shot fallback.")
+            log.warning("could not load reranker checkpoint, using zero-shot fallback", error=str(e))
             self._zero_shot = True
         
         self._loaded = True

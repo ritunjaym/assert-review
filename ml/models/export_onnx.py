@@ -5,9 +5,10 @@ Usage: python -m ml.models.export_onnx
 from __future__ import annotations
 
 from pathlib import Path
-import logging
 
-logger = logging.getLogger(__name__)
+import structlog
+
+log = structlog.get_logger()
 
 CHECKPOINT_DIR = Path(__file__).parent / "reranker"
 ONNX_DIR = Path(__file__).parent / "reranker_onnx"
@@ -39,15 +40,15 @@ def export_reranker_to_onnx(
     # Load order: local checkpoint → HF Hub → codebert-base
     if cp.exists() and any(cp.iterdir()):
         model_name = str(cp)
-        logger.info(f"Loading local checkpoint from {cp}")
+        log.info(f"Loading local checkpoint from {cp}")
     else:
         try:
             model_name = "ritunjaym/prism-reranker"
-            logger.info(f"No local checkpoint found. Trying HF Hub: {model_name}")
+            log.info(f"No local checkpoint found. Trying HF Hub: {model_name}")
             # Quick check: try loading tokenizer to detect format issues
             AutoTokenizer.from_pretrained(model_name, cache_dir="/tmp/hf-cache")
         except Exception as e:
-            logger.warning(f"HF Hub load failed ({e}). Falling back to microsoft/codebert-base")
+            log.warning(f"HF Hub load failed ({e}). Falling back to microsoft/codebert-base")
             model_name = "microsoft/codebert-base"
 
     try:
@@ -56,7 +57,7 @@ def export_reranker_to_onnx(
             model_name, num_labels=1, cache_dir="/tmp/hf-cache"
         )
     except Exception as e:
-        logger.warning(f"Failed to load {model_name} ({e}). Falling back to microsoft/codebert-base")
+        log.warning(f"Failed to load {model_name} ({e}). Falling back to microsoft/codebert-base")
         model_name = "microsoft/codebert-base"
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir="/tmp/hf-cache")
         model = AutoModelForSequenceClassification.from_pretrained(
@@ -87,7 +88,7 @@ def export_reranker_to_onnx(
                 "logits": {0: "batch"},
             },
         )
-    logger.info(f"ONNX model exported to {out}")
+    log.info(f"ONNX model exported to {out}")
 
     # Verify
     import onnxruntime as ort
@@ -96,10 +97,9 @@ def export_reranker_to_onnx(
     torch_out = model(**dummy).logits.detach().numpy()
     import numpy as np
     diff = abs(ort_out[0] - torch_out).max()
-    logger.info(f"Max output diff PyTorch vs ONNX: {diff:.6f} ({'OK' if diff < 1e-3 else 'WARNING'})")
+    log.info(f"Max output diff PyTorch vs ONNX: {diff:.6f} ({'OK' if diff < 1e-3 else 'WARNING'})")
 
-    print(f"Exported to {out} ({out.stat().st_size/1e6:.1f} MB)")
-    print(f"Max output diff PyTorch vs ONNX: {diff:.6f} ({'OK' if diff < 1e-3 else 'WARNING'})")
+    log.info("exported ONNX model", path=str(out), size_mb=round(out.stat().st_size/1e6, 1), max_diff=round(float(diff), 6), status="ok" if diff < 1e-3 else "WARNING")
 
 
 def quantize_onnx_model(
@@ -134,7 +134,7 @@ def quantize_onnx_model(
     size_fp32 = src.stat().st_size / 1e6
     size_int8 = dst.stat().st_size / 1e6
     compression = (1 - size_int8 / size_fp32) * 100
-    print(f"Quantized: {size_fp32:.1f} MB → {size_int8:.1f} MB ({compression:.0f}% reduction)")
+    log.info("quantized ONNX to INT8", fp32_mb=round(size_fp32, 1), int8_mb=round(size_int8, 1), compression_pct=round(compression, 0))
 
     # Verify quantized model runs
     import onnxruntime as ort
@@ -146,13 +146,12 @@ def quantize_onnx_model(
         "token_type_ids": np.zeros((1, 128), dtype=np.int64),
     }
     out = sess.run(None, dummy)
-    print(f"INT8 model inference OK, output shape: {out[0].shape}")
+    log.info("INT8 inference verification ok", output_shape=str(out[0].shape))
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     export_reranker_to_onnx()
     try:
         quantize_onnx_model()
     except FileNotFoundError as e:
-        print(f"Skipping quantization: {e}")
+        log.warning("skipping quantization", error=str(e))

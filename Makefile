@@ -12,7 +12,7 @@ setup-ml:
 	python -m ml.models.build_index
 
 setup-web:
-	cd apps/web && npm install
+	cd apps/web-solid && npm install --no-workspaces
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 

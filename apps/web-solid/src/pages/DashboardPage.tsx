@@ -97,7 +97,7 @@ export function DashboardPage() {
                       return (
                         <a
                           class="block bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg px-4 py-3 hover:border-[var(--accent)]/50 hover:bg-[var(--bg-elevated)] transition-all cursor-pointer group"
-                          onClick={() => navigate({ to: prUrl as any })}
+                          onClick={() => navigate({ to: '/pr/$owner/$repo/$number', params: { owner: repoOwner, repo: repoName, number: String(pr.number) } })}
                           onMouseEnter={() => handlePRHover(repoOwner, repoName, pr.number)}
                         >
                           <div class="flex items-start gap-3">
