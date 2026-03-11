@@ -13,6 +13,7 @@ eggs/
 lib/
 lib64/
 !apps/web/src/lib/
+!apps/web-solid/src/lib/
 parts/
 sdist/
 var/

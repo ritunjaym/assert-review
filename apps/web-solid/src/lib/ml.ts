@@ -60,7 +60,7 @@ export const mlApi = {
       })
       if (!res.ok) throw new Error()
       const data = await res.json()
-      return data.clusters ?? []
+      return data.groups ?? []
     } catch {
       return []
     }

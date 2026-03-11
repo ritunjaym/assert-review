@@ -14,7 +14,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }),
   })
   const tokenData = await tokenRes.json() as { access_token: string; error?: string; error_description?: string }
-  console.log('GitHub token response:', JSON.stringify(tokenData))
   if (!tokenData.access_token) return res.redirect(`/login?error=${tokenData.error ?? 'no_token'}`)
 
   const userRes = await fetch('https://api.github.com/user', {

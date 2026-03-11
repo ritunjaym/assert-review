@@ -1,4 +1,5 @@
 import { createSignal, For, Show, createMemo } from 'solid-js'
+import { useQueryClient } from '@tanstack/solid-query'
 import type { PRFile } from '@/lib/github'
 import type { RankedFile } from '@/lib/ml'
 import { ScoreBadge } from '@/components/ScoreBadge'
@@ -42,6 +43,7 @@ interface Props {
 }
 
 export function DiffViewer(props: Props) {
+  const queryClient = useQueryClient()
   const [activeCommentLine, setActiveCommentLine] = createSignal<number | null>(null)
   const [commentText, setCommentText] = createSignal('')
   const [comments, setComments] = createSignal<Array<{ line: number; body: string; author: string }>>([])
@@ -72,7 +74,10 @@ export function DiffViewer(props: Props) {
             pr_number: props.prId, body, path: props.file?.filename, line,
           }),
         })
-        if (res.ok) return
+        if (res.ok) {
+          queryClient.invalidateQueries({ queryKey: ['timeline'] })
+          return
+        }
       } catch {}
       attempts++
       if (attempts < 3) await new Promise(r => setTimeout(r, delays[attempts - 1]))

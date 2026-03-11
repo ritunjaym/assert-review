@@ -1,16 +1,23 @@
+import { createSignal } from 'solid-js'
+
 const API_BASE = '/api/github'
+
+export const [rateLimitRemaining, setRateLimitRemaining] = createSignal(5000)
 
 async function githubFetch<T>(path: string): Promise<T> {
   // path may include query params like /user/repos?sort=pushed
   // Split into endpoint and existing query string
   const [endpoint, qs] = path.startsWith('/') ? path.slice(1).split('?') : path.split('?')
   const url = `${API_BASE}?path=${endpoint}${qs ? `&${qs}` : ''}`
+  if (rateLimitRemaining() < 10) throw new Error('Rate limit exhausted — try again later')
   const res = await fetch(url)
   if (res.status === 401) {
     window.location.href = '/login'
     throw new Error('Unauthorized')
   }
   if (!res.ok) throw new Error(`GitHub API error: ${res.status}`)
+  const remaining = res.headers.get('x-ratelimit-remaining')
+  if (remaining) setRateLimitRemaining(parseInt(remaining))
   return res.json()
 }
 
