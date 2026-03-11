@@ -249,6 +249,8 @@ Key observations:
 - `@tanstack/solid-virtual` (file list virtualizer) is loaded on PR review only
 - TanStack Router handles code splitting per route automatically via Vite
 
+![Bundle Treemap](docs/bundle-treemap.png)
+
 ### Lighthouse Scores
 
 | Metric | Next.js | Solid.js |
@@ -262,9 +264,11 @@ Key observations:
 |------------|---------|----------|--------|
 | LCP | 0.8s | 0.4s | < 1.5s ✅ |
 | CLS | 0.094 | 0.002 | < 0.1 ✅ |
-| TBT | 0ms | 20ms | < 200ms ✅ |
+| TBT¹ | 0ms | 20ms | < 200ms ✅ |
 | FCP | 0.5s | 0.3s | < 1.8s ✅ |
 | Speed Index | 0.6s | 0.6s | < 3.4s ✅ |
+
+> ¹ FID is deprecated as of 2024. Project uses INP (Interaction to Next Paint) via web-vitals v4. TBT = 20ms serves as lab proxy.
 
 **Next.js** — SSR-optimized, better SEO baseline
 **Solid.js** — fine-grained reactivity, near-perfect scores

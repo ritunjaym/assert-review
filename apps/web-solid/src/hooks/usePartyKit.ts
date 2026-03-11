@@ -17,17 +17,19 @@ const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#ef4444'
 
 export function usePartyKit(prId: string) {
   const [connected, setConnected] = createSignal(false)
+  const [isReconnecting, setIsReconnecting] = createSignal(false)
   const [presence, setPresence] = createSignal<Presence[]>([])
   const [lastGithubEvent, setLastGithubEvent] = createSignal<GithubEventMessage | null>(null)
   let ws: WebSocket | null = null
 
   const PARTYKIT_HOST = import.meta.env.VITE_PARTYKIT_HOST
-  if (!PARTYKIT_HOST) return { connected, presence, lastGithubEvent }
+  if (!PARTYKIT_HOST) return { connected, isReconnecting, presence, lastGithubEvent }
 
   const roomId = `pr-${prId}`.replace(/[^a-z0-9-]/gi, '-').toLowerCase()
   const url = `wss://${PARTYKIT_HOST}/parties/main/${roomId}`
 
   function connect() {
+    setIsReconnecting(false)
     ws = new WebSocket(url)
 
     ws.onopen = () => {
@@ -54,6 +56,7 @@ export function usePartyKit(prId: string) {
 
     ws.onclose = () => {
       setConnected(false)
+      setIsReconnecting(true)
       setTimeout(connect, 3000)
     }
 
@@ -63,5 +66,5 @@ export function usePartyKit(prId: string) {
   connect()
   onCleanup(() => ws?.close())
 
-  return { connected, presence, lastGithubEvent }
+  return { connected, isReconnecting, presence, lastGithubEvent }
 }

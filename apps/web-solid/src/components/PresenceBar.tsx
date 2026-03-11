@@ -4,12 +4,20 @@ import { usePartyKit } from '@/hooks/usePartyKit'
 interface Props { prId: string }
 
 export function PresenceBar(props: Props) {
-  const { connected, presence } = usePartyKit(props.prId)
+  const { connected, isReconnecting, presence } = usePartyKit(props.prId)
 
   return (
     <div class="flex items-center gap-2">
-      <span class={`w-1.5 h-1.5 rounded-full ${connected() ? 'bg-green-400' : 'bg-red-500'}`} />
-      <span class="text-xs text-slate-500">{connected() ? 'Live' : 'Offline'}</span>
+      <Show when={isReconnecting()}>
+        <span class="text-[10px] text-[var(--important)] flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-[var(--important)] animate-pulse"/>
+          Reconnecting
+        </span>
+      </Show>
+      <Show when={!isReconnecting()}>
+        <span class={`w-1.5 h-1.5 rounded-full ${connected() ? 'bg-green-400' : 'bg-red-500'}`} />
+        <span class="text-xs text-slate-500">{connected() ? 'Live' : 'Offline'}</span>
+      </Show>
       <div class="flex -space-x-1">
         <For each={presence().slice(0, 5)}>
           {user => (
